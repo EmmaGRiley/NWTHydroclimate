@@ -4,3 +4,5 @@ Title: Functions for snow survey data manipulation/wrangling and connecting to S
 Version: 0.0.1.0
 Encoding: UTF-8
 RoxygenNote: 7.2.3
+Imports: readxl, magrittr, dplyr, xlsx
+
