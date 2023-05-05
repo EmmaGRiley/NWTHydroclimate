@@ -26,6 +26,7 @@
 SummaryTableSO <- function(x, surface, minyear, maxyear, curmaxyear, act, filepath)
   
 {ST_means = x %>%
+  dplyr::mutate(isY = case_when(dataflags=="Y" ~ 'Y')) %>%
   dplyr::filter(surf==surface, 
                 is.na(x$isY),
                 activity==act) %>%
