@@ -93,7 +93,25 @@ dailyvars[is.nan.data.frame(dailyvars)] <- NA #replaces NaN values with Na
 namedata = c("~/dailyvars", deparse(substitute(x)),".xlsx") #will show up as dailyvars"nameofhourlysheet".xlsx in this directory
 filename = paste(namedata[1], namedata[2], namedata[3], sep="")
 
-xlsx::write.xlsx(as.data.frame(dailyvars), file=filename, row.names = FALSE)}
+xlsx::write.xlsx(as.data.frame(dailyvars), file=filename, row.names = FALSE)
+
+dailyvars<<- dailyvars
+
+monthlyvars = dailyvars %>%
+  dplyr::group_by(Year, Month) %>%
+  dplyr::summarize(monthlyairT = round(mean(dailyairT[sum(!is.na(dailyairT))>24], na.rm=TRUE), 4),
+                   monthlyRH = round(mean(dailyRH[sum(!is.na(dailyRH))>24], na.rm=TRUE), 4),
+                   monthlyRain = sumna(dailyRain[sum(!is.na(dailyRain))>24]),
+                   monthlyWS = round(mean(dailyWS[sum(!is.na(dailyWS))>24], na.rm = TRUE), 2),
+                   monthlyQ = round(mean(dailyQ[sum(!is.na(dailyQ))>24], na.rm = TRUE), 2)) #specifies that there must be at least 
+#25 non-Na values to create a monthly mean}
+monthlyvars[is.nan.data.frame(monthlyvars)] <- NA #replaces NaN values with Na
+
+namedata = c("~/monthlyvars", deparse(substitute(x)),".xlsx") #will show up as monthlyvars"nameofhourlysheet".xlsx in this directory
+filename = paste(namedata[1], namedata[2], namedata[3], sep="")
+
+xlsx::write.xlsx(as.data.frame(monthlyvars), file=filename, row.names = FALSE)}
+}
 
 #############################################################
 
