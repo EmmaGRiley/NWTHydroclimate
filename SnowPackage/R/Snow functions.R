@@ -62,5 +62,5 @@ ST = ST_means %>%
                    pernorm = ((meanSWE_cur/meanSWE01_20)*100))
 
 
-write.xlsx(ST, file=filepath)}
+xlsx::write.xlsx(ST, file=filepath)}
 
