@@ -53,8 +53,8 @@ SummaryTableSO <- function(x, y, surface, minyear, maxyear, curmaxyear, act, fil
 
 ST = ST_means %>%
   dplyr::group_by(site) %>%
-  dplyr::summarize(yrs = n_distinct(year, na.rm=TRUE),
-                   yrs2 = n_distinct(year[year>minyear & year<maxyear], na.rm=TRUE),
+  dplyr::summarize(yrs = dplyr::n_distinct(year, na.rm=TRUE),
+                   yrs2 = dplyr::n_distinct(year[year>minyear & year<maxyear], na.rm=TRUE),
                    meanSWE01_20 = round(mean(yearlySWE[year>minyear & year<maxyear], na.rm=TRUE), 4), 
                    meandepth_cur = round(mean(yearlydepth[year==curmaxyear], na.rm=TRUE), 4),
                    meanSWE_cur = round(mean(yearlySWE[year==curmaxyear], na.rm=TRUE), 4),
