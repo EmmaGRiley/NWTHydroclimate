@@ -79,7 +79,7 @@ sumna <- function(x) {
 #'#should contain Year	JD	dailyairT	dailyRH	dailyRain	dailyWS	dailyQ
 #'#                1999	287	     22.3	   #N/A	     19.8	   0.8	86.42
 #'@export
-hourlytodaily = function(x)
+temporalmeans = function(x)
 {dailyvars = x %>%                                   
   dplyr::group_by(Year, JD) %>%
   dplyr::summarize(dailyairT = round(mean(`Air Temperature`[sum(!is.na(`Air Temperature`))>19], na.rm=TRUE), 4),
