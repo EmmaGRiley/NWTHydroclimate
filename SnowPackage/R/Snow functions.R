@@ -14,8 +14,7 @@
 #'Takes snow survey values from the SnowDB database and generates a summary table for the current year.
 #'Output is an excel file written as "filepath" argument.
 #'swe, depth and site variables must be named "SWE", "depth" and "site" in the input dataframe. 
-#'@param x Snow survey dataframe - measurement sheet
-#'@param y Snow survey dataframe - metadata sheet
+#'@param x Snow survey dataframe
 #'@param surface Filters for surface type. Specify "upland", "lake" or NULL (all surface types). 
 #'@param minyear Minimum calculation year (minus 1) for the normal period. For example, for a 2001-2020 normal period minyear is set to 2000.
 #'@param maxyear Maximum calculation year (plus 1) for the normal period. For example, for a 2001-2020 normal period maxyear is set to 2021.
@@ -30,7 +29,7 @@ SummaryTableSO <- function(x, y, surface, minyear, maxyear, curmaxyear, act, fil
   mtch = match(var1, var2)
   var4<-var3[match(var1, var2)]
   return(var4)}
- 
+  
   region = appendvar(var1=x$site, var2 = y$Site_name, var3 = y$region)
   activity = appendvar(var1=x$site, var2 = y$Site_name, 
                      var3 = y$`Active/Inactive`)
@@ -39,7 +38,7 @@ SummaryTableSO <- function(x, y, surface, minyear, maxyear, curmaxyear, act, fil
   lng<-appendvar(x$site, y$Site_name, y$Long)
   lt<-appendvar(x$site, y$Site_name, y$Lat)
   x_2<-cbind(x, region, activity, cf, lng, lt) 
- 
+
   ST_means = x_2 %>%
   dplyr::mutate(x_2, isY = dplyr::case_when(dataflags=="Y" ~ 'Y')) %>%
   dplyr::filter(surf==surface, 
@@ -63,4 +62,67 @@ ST = ST_means %>%
 
 
 xlsx::write.xlsx(ST, file=filepath)}
+
+#functions for SWE plots
+
+#'Regional SWE plot
+#'
+#'Creates boxplot for SWE based on location; South Slave, North Slave, Inuvialuit/Gwich'in, Sahtu and Dehcho regions.
+#'@param x The dataframe containing snow survey data.
+#'@param y The site metadata sheet. 
+#'@param currentyear The current year, will be highlighted in red
+#'@param act The activity of the snow survey site. Options are "A" for active and "IA" for inactive.
+#'@param surface The surface type for the snow survey. Options are "upland" or "lake." 
+#'@param plot_width Default set to 20
+#'@param plot_height Default set to 12
+#'@param plot_name Saves a png called "Regional SWE" in the working directory
+#'@export
+
+regional_SWE <- function(x,
+                         y,
+                         currentyear, 
+                         act, 
+                         surface,
+                         plot_width = 20, 
+                         plot_height = 12, 
+                         plot_name = "Regional SWE")
+  
+{appendvar = function (var1, var2, var3){
+  mtch = match(var1, var2)
+  var4<-var3[match(var1, var2)]
+  return(var4)}
+
+region = appendvar(var1=x$site, var2 = y$Site_name, var3 = y$region)
+activity = appendvar(var1=x$site, var2 = y$Site_name, 
+                     var3 = y$`Active/Inactive`)
+cf = appendvar(var1=x$site, var2 = y$Site_name, 
+               var3 = y$`catchment reference`)
+lng<-appendvar(x$site, y$Site_name, y$Long)
+lt<-appendvar(x$site, y$Site_name, y$Lat)
+x_2<-cbind(x, region, activity, cf, lng, lt) 
+  
+  df <- x_2 %>%
+  dplyr::mutate(x_2, isY = dplyr::case_when(dataflags=="Y" ~ 'Y')) %>%
+  dplyr::select(surf, site, year, month, day, point, depth, SWE, dataflags, cf, region, activity, isY) %>% # Choose columns from master datasheet
+  dplyr::filter(activity == act, surf == surface, is.na(isY)) %>%
+  dplyr::group_by(region, year) %>% # These are the parameters you are grouping by
+  dplyr::summarize(Annual_Mean = mean(SWE, na.rm=TRUE)) # Perform desired operation
+
+plot <- ggplot2::ggplot(data = df, ggplot2::aes(x = region, y = Annual_Mean)) +
+  ggplot2::geom_boxplot(outlier.shape = NA) +
+  ggplot2::geom_jitter(ggplot2::aes(color = df$year == currentyear)) +
+  ggplot2::scale_color_manual(labels=c("all other years", currentyear), values = c("TRUE" = "red", "FALSE" = "black")) +
+  ggplot2::ylim(0, max(df$Annual_Mean)) +
+  ggplot2::theme_classic() +
+  ggplot2::theme(legend.position = c(.85, .95)) +
+  ggplot2::theme(legend.title = ggplot2::element_blank()) +
+  ggplot2::labs(title = paste(""),
+                x = "Region",
+                y = "Annual (SWE)")
+ggplot2::ggsave(paste0(plot_name, ".png"), plot = plot, device = "png", 
+                path = "~", 
+                scale = 1, width = plot_width, height = plot_height, units = c("cm"), dpi = 900)
+
+plot
+}
 
