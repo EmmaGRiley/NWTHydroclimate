@@ -79,10 +79,13 @@ sumna <- function(x) {
 #'#should contain Year	JD	dailyairT	dailyRH	dailyRain	dailyWS	dailyQ
 #'#                1999	287	     22.3	   #N/A	     19.8	   0.8	86.42
 #'@export
-temporalmeans = function(x)
-{dailyvars = x %>%                                   
+
+
+temporalmeans= function(x)
+  {dailyvars = x %>%                                   
   dplyr::group_by(Year, JD) %>%
   dplyr::summarize(dailyairT = round(mean(`Air Temperature`[sum(!is.na(`Air Temperature`))>19], na.rm=TRUE), 4),
+                   Month = max(Month),
                    dailyRH = round(mean(`Relative Humidity`[sum(!is.na(`Relative Humidity`))>19], na.rm=TRUE), 4),
                    dailyRain = sumna(`Rainfall`[sum(!is.na(`Rainfall`))>19]),
                    dailyWS = round(mean(`Wind Speed`[sum(!is.na(`Wind Speed`))>19], na.rm = TRUE), 2),
@@ -111,6 +114,6 @@ namedata = c("~/monthlyvars", deparse(substitute(x)),".xlsx") #will show up as m
 filename = paste(namedata[1], namedata[2], namedata[3], sep="")
 
 xlsx::write.xlsx(as.data.frame(monthlyvars), file=filename, row.names = FALSE)}
-
 #############################################################
+
 
