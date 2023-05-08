@@ -111,7 +111,6 @@ namedata = c("~/monthlyvars", deparse(substitute(x)),".xlsx") #will show up as m
 filename = paste(namedata[1], namedata[2], namedata[3], sep="")
 
 xlsx::write.xlsx(as.data.frame(monthlyvars), file=filename, row.names = FALSE)}
-}
 
 #############################################################
 
