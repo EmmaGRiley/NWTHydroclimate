@@ -52,17 +52,17 @@ sumna <- function(x) {
   return(ifelse(all(is.na(x)), NA, sum(na.omit(x))))
 }
 
-#'Hourly to Daily
+#'Temporal means
 #'
-#'Function to convert hourly to daily values for raw met station data
+#'Function to convert hourly to daily to monthly values for raw met station data
 #'
-#'Writes an excel file to the working directory with newly calculated daily values for 
+#'Writes two excel files to the working directory - one for daily and one for monthly values of 
 #'Air Temperature, Relative Humidity, Rainfall, Wind speed and
 #'Net Radiation.
 #'
 #'Hourly variables in dataframe must be written exactly as above.
 #'
-#'Calculates daily means only if there are at least 20 hourly values recorded in a day.
+#'Calculates daily means only if there are at least 20 hourly values recorded in a day. Calculates monthly means only if there are at least 25 daily means in a month.
 #'
 #'@param x The hourly dataframe
 #'@examples
@@ -74,8 +74,8 @@ sumna <- function(x) {
 #'Year<-c(1999, 1999, 1999, 1999, 1999, 1999, 1999, 1999, 1999, 1999, 1999, 1999, 1999, 1999, 1999, 1999, 1999, 1999, 1999, 1999, 1999, 1999, 1999, 1999)
 #'JD<-c(287, 287, 287, 287, 287, 287,  287, 287, 287, 287, 287, 287, 287, 287, 287, 287, 287, 287, 287, 287, 287, 287, 287, 287)
 #'x<-cbind.data.frame(Year, JD, `Air Temperature`, `Relative Humidity`, `Rainfall`, `Wind Speed`, `Net Radiation`)
-#'hourlytodaily(x) #returns
-#'#writes an excel file "hourlymeansx.xlsx" to the working directory
+#'temporalmeans(x) #returns
+#'#writes excel files "dailymeansx.xlsx" and monthlymeansx.xlsx to the working directory. Where x is the name of the hourly dataframe.
 #'#should contain Year	JD	dailyairT	dailyRH	dailyRain	dailyWS	dailyQ
 #'#                1999	287	     22.3	   #N/A	     19.8	   0.8	86.42
 #'@export
