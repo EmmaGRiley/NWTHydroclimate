@@ -15,9 +15,11 @@ library(magrittr)
 #'@export
 updatehydat = function(station_number = names, #names of stations saved in the filepath
                        variables, #choose 46 (water level, primary sensor), 47 (discharge, primary sensory derived), 5 (water temperature), 16(water level, primary sensor), 52 (water level, primary sensor)
-                       ext= "*.rds")
+                       ext= "*.rds",
+                       param_id = tidyhydat.ws::param_id)
 
-{
+{ 
+  library(magrittr)
   data.files = list.files(pattern=ext)
   files = lapply(data.files, readRDS)
   names = tools::file_path_sans_ext(data.files)
