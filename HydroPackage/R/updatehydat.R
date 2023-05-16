@@ -7,13 +7,13 @@ library(magrittr)
 #'
 #'Takes existing station RDS files in the working directory and
 #'updates them with real time hydrometric data.
-#'@param parameters Options are 46, (water level, primary sensor), 47 (discharge, primary sensory derived), 5 (water temperature), 16(water level, primary sensor), 52 (water level, primary sensor). List chosen parameters inside c().
+#'@param variables Options are 46, (water level, primary sensor), 47 (discharge, primary sensory derived), 5 (water temperature), 16(water level, primary sensor), 52 (water level, primary sensor). List chosen parameters inside c().
 #'@return Saves new RDS files in the working directory.
 #'@examples
-#'updatehydat(parameters = c(46, 47))
+#'updatehydat(variables = c(46, 47))
 #'Saves new RDS files with updated water level and discharge values.
 updatehydat = function(station_number = names, #names of stations saved in the filepath
-                       parameters, #choose 46 (water level, primary sensor), 47 (discharge, primary sensory derived), 5 (water temperature), 16(water level, primary sensor), 52 (water level, primary sensor)
+                       variables, #choose 46 (water level, primary sensor), 47 (discharge, primary sensory derived), 5 (water temperature), 16(water level, primary sensor), 52 (water level, primary sensor)
                        ext= "*.rds")
 
 {
@@ -26,7 +26,7 @@ updatehydat = function(station_number = names, #names of stations saved in the f
                           end_date = Sys.time(),
                           token = tidyhydat.ws::token_ws())
   new.files = newfiles %>%
-  dplyr::filter(newfiles$Parameter %in% parameters)
+  dplyr::filter(Parameter %in% variables)
 
   existingfiles = files %>%
   dplyr::bind_rows(files)
