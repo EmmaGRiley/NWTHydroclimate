@@ -28,7 +28,7 @@ updatehydat = function(station_number = names, #names of stations saved in the f
                           end_date = Sys.time(),
                           token = tidyhydat.ws::token_ws())
   new.files = newfiles %>%
-  dplyr::filter(Parameter %in% variables)
+  dplyr::filter(newfiles$Parameter %in% variables)
 
   existingfiles = files %>%
   dplyr::bind_rows(files)
