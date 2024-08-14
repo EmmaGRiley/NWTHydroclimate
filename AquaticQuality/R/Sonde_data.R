@@ -51,16 +51,15 @@ data["latitude"] <- latitude
 data["longitude"] <- longitude
 data["station"] <- station
                                         
-data <- data %>%
-  dplyr::rename(date = `Date (MM/DD/YYYY)`,
+data <- dplyr::rename(data, date = `Date (MM/DD/YYYY)`,
                 time = `Time (HH:mm:ss)`,
                 `site name` = `Site Name`,
                 chlorophyll = `Chlorophyll RFU`,
                  d_oxygen = `ODO mg/L`,
                  s_cond = `Cond µS/cm`,
                  turbidity = `Turbidity FNU`,
-                 w_temp = `Temp °C`) %>%
-  dplyr::select(`site name`, station, latitude, longitude, date, time, chlorophyll, d_oxygen, pH, s_cond, turbidity,
+                 w_temp = `Temp °C`)
+data <- dplyr::select(data, `site name`, station, latitude, longitude, date, time, chlorophyll, d_oxygen, pH, s_cond, turbidity,
                 w_temp, year, month, day)
 
 write.csv(data, paste0(path, filename, "_clean.csv"), row.names = F)
