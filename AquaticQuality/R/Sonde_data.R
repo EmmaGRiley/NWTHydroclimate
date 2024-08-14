@@ -8,6 +8,7 @@ library(writexl)
 library(dplyr)
 library(lubridate)
 library(stringr)
+library(magrittr)
 
 #Convert sonde data file function
 
