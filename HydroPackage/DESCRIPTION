@@ -1,9 +1,0 @@
-Package: HydroPackage
-Type: Package
-Title: For updating and manipulating of ECCC hydrometric data
-Version: 0.1.0
-Author: Emma Riley
-Maintainer: Emma Riley <emma_riley@gov.gc.ca>
-Encoding: UTF-8
-Imports: magrittr, readxl, tidyhydat.ws
-RoxygenNote: 7.2.3
