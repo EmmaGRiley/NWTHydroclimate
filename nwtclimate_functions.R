@@ -29,6 +29,8 @@ source(paste0(nwtclimate_path, R_path, "update.R"))
 source(paste0(nwtclimate_path, R_path, "filter.R"))
 source(paste0(nwtclimate_path, R_path, "stitch.R"))
 source(paste0(nwtclimate_path, R_path, "nt_merge.R"))
+source(paste0(nwtclimate_path, R_path, "replace_coordinates.R")) - #Maude added
+source(paste0(nwtclimate_path, R_path, "split_sites.R")) - #Maude added
 source(paste0(hydroclim_path, R_path, "hydroclim_load.R"))
 source(paste0(hydroclim_path, R_path, "hydro_filter.R")) # - ER added.
 source(paste0(hydroclim_path, R_path, "clim_compile_daily.R"))
@@ -58,7 +60,7 @@ source(paste0(hydroclim_path, R_path, "clim_plot_timeseries.R"))
 
 # Directory where plots are saved
 
-save_path <- paste0(user, "/Documents/NT_Hydrology/Figures")
+save_path <- paste0(user, "NT_Hydrology/Figures")
 
 
 ###########################################################################################################
