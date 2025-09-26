@@ -39,6 +39,7 @@ source(paste0(hydroclim_path, R_path, "hydro_calc_daily.R"))
 source(paste0(hydroclim_path, R_path, "hydro_calc_dayofyear.R"))
 # source(paste0(hydroclim_path, R_path, "hydro_calc_dayofyear_working.R")) # - ER added
 source(paste0(hydroclim_path, R_path, "hydro_plot_dayofyear.R"))
+source(paste0(hydroclim_path, R_path, "hydro_map_basins.R")) # ER added
 # source(paste0(hydroclim_path, R_path, "hydro_plot_dayofyear_working.R")) # - ER added
 # source(paste0(nwtclimate_path, R_path, "merge_ECC_ECCC.R")) ## newly added - MA
 source(paste0(hydroclim_path, R_path, "clim_compile_daily.R"))
