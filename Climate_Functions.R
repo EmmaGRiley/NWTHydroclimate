@@ -468,6 +468,46 @@ clim_calc_monthly(
   water_year_start = 1
 )
 
+###################################################################################################
+#Generate hydro maps - can edit to plot cumulative precip, communities and/or gauges
+
+hydro_map_basin(
+  station = c("07NB001"),
+  zoom = 2,
+  Mack_basin = T,
+  NWT_border = T,
+  save = T,
+  sub_basin_delineate = F,
+  communities = c(  "Mackenzie",
+                  "Peace River",
+                  "Fort St John",
+                  "High Level",
+                  "Fort Chipewyan",
+                  "Fort Smith",
+                  "Hay River",
+                  "Yellowknife",
+                  "Fort Simpson",
+                  "Norman Wells",
+                  "Inuvik",
+                  "Fort Liard",
+                  "Fort Nelson",
+                  "Watson Lake",
+                  "Athabasca",
+                  "Fort McMurray",
+                  "Fort Good Hope"),
+  plot_communities = F,
+  plot_gauges = F,
+  cum_precip = T, #plots cumulative precipitation
+  save_path = paste0(user, "NT_Hydrology/Figures"),
+  select_year = 2025,
+  water_year_start = 4,
+  water_year = F,
+  end_date = "2025-10-01",
+  plot_legend = T,
+  adjust_manual_cum_precip = T, #change this to true if you are manually adjusting precip values based on gapfilling from FTS stns
+  phantomjspath = "C:/Users/emma_riley/Documents/Modelling/Phantomjs/phantomjs/bin" #get phantomjs executable and save in similar directory
+)
+
 
 
 
