@@ -1,3 +1,8 @@
+# This script downloads daily total precip data for [65.5, -112, 64.5, -110.5] from 2000-2024
+# Use command line to run this script
+
+# Once complete, data need to be extracted and merged using Merge_NC_files.R
+
 import cdsapi
 import os
 from datetime import datetime
