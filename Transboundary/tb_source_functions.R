@@ -4,7 +4,7 @@
 `%>%` <- magrittr::`%>%`
 
 #Define workflow path
- user <- "C:/Users/emma_riley" #Change this using your username
+ user <- paste0("C:/Users/", tolower(Sys.getenv("USERNAME")))
  wf_path <- paste0(user, "R_Scripts/Functions/Workflows/")
 
 #Path to additional R scripts 
@@ -64,6 +64,7 @@ source(paste0(tb_path, "tb_plot_triggers.R"))
 source(paste0(add_R_path, "SOEfigs_functions.R"))
 
 ###########################################################################################################
+
 
 
 
