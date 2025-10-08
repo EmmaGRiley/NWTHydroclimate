@@ -12,6 +12,7 @@ Dependencies descriptions
 update_climate.R - this script runs through functions update.R, filter.R, stitch.R and nt_merge.R in order to update the ECCC merged and homogenized dataset
 hydroclim package - functions in this package compile, calculate and plot climate and hydrometric data
 nwtclimate package - functions in this package compile a filtered, stitched and merged ECCC climate dataset
+SOE_functions.R - this function is used for trend analysis. It's found here: https://github.com/EmmaGRiley/NWTHydroclimate/blob/main/SOEfigs_functions.R 
 
 To use:
 First download the latest tidyhydat SQL file (contains finalized hydrometric data) by running: tidyhydat::download_hydat()
@@ -23,6 +24,7 @@ tb_source_functions.R - note you must edit the file pathways
 tb_calc_triggers.R
 tb_plot_triggers.R
 TB_Functions & TB_hydroclimate_plots.R - note you must edit the file pathways
+
 
 
 
