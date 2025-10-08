@@ -18,7 +18,7 @@ hydroclim_path <- paste0(package_path, "hydroclim/")
 tb_path <- paste0(package_path, "Transboundary/")
 R_path <- paste0("R/")
 data_path <- paste0(nwtclimate_path, "data/")
-snow_path <- paste0(package_path, "snow/",R_path)
+#snow_path <- paste0(package_path, "snow/",R_path)
 
 # Define file names
 original_data = "ECCC_Climate_Data"
@@ -64,6 +64,7 @@ source(paste0(tb_path, "tb_plot_triggers.R"))
 source(paste0(wf_path, "SOEfigs_functions.R"))
 
 ###########################################################################################################
+
 
 
 
