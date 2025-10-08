@@ -26,7 +26,22 @@ tb_calc_triggers.R
 tb_plot_triggers.R
 TB_Functions & TB_hydroclimate_plots.R - note you must edit the file pathways
 
+Notes:
 
+The set up will be easiest if you define the following file paths on your computer: 
 
+ "C:/Users/firstname_lastname/Documents/R_Scripts/Packages/hydroclim" - save your local package of hydroclim here
+ "C:/Users/firstname_lastname/Documents/R_Scripts/Packages/nwtclimate" - save your local package of nwtclimate here, including data folder and files
+ "C:/Users/firstname_lastname/Documents/R_Scripts/Packages/Transboundary" - save your local versions of these files:
+
+/data
+TB_Functions.R 
+TB_hydroclimate_plots.R 
+tb_calc_triggers.R 
+tb_plot_triggers.R 
+tb_source_functions.R
+
+"C:/Users/firstname_lastname/Documents/R_Scripts/Functions/Workflows/SOEfigs_functions.R"
+"C:/Users/firstname_lastname/Documents/R_Scripts/Functions/Workflows/update_climate.R"
 
 
