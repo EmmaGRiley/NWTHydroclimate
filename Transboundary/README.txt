@@ -15,7 +15,7 @@ nwtclimate package - functions in this package compile a filtered, stitched and 
 
 To use:
 First download the latest tidyhydat SQL file (contains finalized hydrometric data) by running: tidyhydat::download_hydat()
-To run the scripts TB_Functions.R and TB_hydroclimate_plots.R, which produce the end results for the report(s) (calculations and figures), you must first clone nwtclimate (including all data files!) and hydroclim to your local computer. 
+To run the scripts TB_Functions.R and TB_hydroclimate_plots.R, which produce the end results for the report(s) (calculations and figures), you must first clone nwtclimate (https://github.com/M-Auclair/nwtclimate/tree/main/R) and hydroclim (https://github.com/M-Auclair/hydroclim/tree/main/R) to your local computer (including all data files!). 
 Once all data and files are set up and respective directories point to the files on your local computer, you must run update_climate.R. Verify that all rds files are up-to-date in your local directory. 
 You must also clone all the scripts in this folder (Transboundary) and in the nested /data folder to your local computer, and set up your file paths to point to theses files on your computer.
 Now you are ready to run the following scripts, in this order:
@@ -23,5 +23,6 @@ tb_source_functions.R - note you must edit the file pathways
 tb_calc_triggers.R
 tb_plot_triggers.R
 TB_Functions & TB_hydroclimate_plots.R - note you must edit the file pathways
+
 
 
