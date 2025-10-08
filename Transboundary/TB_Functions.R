@@ -5,16 +5,15 @@
 # Define file paths
 
 user <- paste0("C:/Users/", tolower(Sys.getenv("USERNAME"))) # Extract system username
-tb_path <- paste0(wf_path, "Transboundary/") # Filepath for transboundary scripts
-file_location <- "/Documents/Individual_Projects/Transboundary/AB_Annual_Report/" # Input folder for annual use data
-file_path <- paste0(user, file_location) # Output file_path
+tb_path <- paste0(package_path, "Transboundary/") # Filepath for transboundary scripts
+file_path <- paste0(tb_path, "data/") # path for data files
 
 ###################################################################################################
 
 # Function for generating plots for triggers and objectives
 
 tb_plot_triggers(
-  select_year = 2024, # year to run analysis
+  select_year = 2021, # year to run analysis
   basin = "Hay", # name of basin to run analysis. Note: code is currently only written for Hay
   station_number = "07OB001", # hydrometric station to calculate flows
   y_max = NA, # maximum value on y-axis
@@ -27,7 +26,7 @@ tb_plot_triggers(
 )
 
 tb_calc_triggers(
-  select_year = 2024,
+  select_year = 2021,
   basin = "Hay",
   station_number = "07OB001"
 )
