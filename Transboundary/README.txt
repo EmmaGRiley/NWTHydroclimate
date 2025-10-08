@@ -1,4 +1,4 @@
-This folder contains scripst for AB-NT transboundary reporting for the Hay River and the Slave River. 
+This folder contains scripts for AB-NT transboundary reporting for the Hay River and the Slave River. 
 
 File descriptions
 /data - this folder contains water use and allocation data, where available, for recent years
@@ -23,4 +23,5 @@ tb_source_functions.R - note you must edit the file pathways
 tb_calc_triggers.R
 tb_plot_triggers.R
 TB_Functions & TB_hydroclimate_plots.R - note you must edit the file pathways
+
 
