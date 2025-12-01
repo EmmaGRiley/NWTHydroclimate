@@ -26,7 +26,17 @@ clim_plot_timeseries(
   select_year = NA,
   water_year_start = 1,
   zoom_x = c(as.Date("2008-10-01"), as.Date("2008-12-01")), #c(as.Date("yyyy-mm-dd"), as.Date("yyyy-mm-dd")) or NULL
-  zoom_y = NULL # c(min y value, max y value) or NULL
+  zoom_y = NULL # c(min y value, max y value) or NULL,
+  data_int = "daily",
+  legend_position = c(1,2),
+  line_colours = c("dodgerblue",
+                  "blue4",
+                  "green4",
+                  "red4",
+                  "purple4",
+                  "yellow4"),
+  save_data = F
+)
 )
 
 
