@@ -37,25 +37,19 @@ source(paste0(hydroclim_path, R_path, "clim_compile_daily.R"))
 source(paste0(hydroclim_path, R_path, "hydro_compile_daily.R"))
 source(paste0(hydroclim_path, R_path, "hydro_calc_daily.R"))
 source(paste0(hydroclim_path, R_path, "hydro_calc_dayofyear.R"))
-# source(paste0(hydroclim_path, R_path, "hydro_calc_dayofyear_working.R")) # - ER added
 source(paste0(hydroclim_path, R_path, "hydro_plot_dayofyear.R"))
 source(paste0(hydroclim_path, R_path, "hydro_map_basins.R")) # ER added
-# source(paste0(hydroclim_path, R_path, "hydro_plot_dayofyear_working.R")) # - ER added
+source(paste0(hydroclim_path, R_path, "hydro_plot_dayofyear_cumulative.R")) # - ER added
 # source(paste0(nwtclimate_path, R_path, "merge_ECC_ECCC.R")) ## newly added - MA
 source(paste0(hydroclim_path, R_path, "clim_compile_daily.R"))
 source(paste0(hydroclim_path, R_path, "clim_calc_daily.R"))
-# source(paste0(hydroclim_path, R_path, "clim_calc_daily_working.R")) # - ER added
 source(paste0(hydroclim_path, R_path, "clim_calc_monthly.R"))
-# source(paste0(hydroclim_path, R_path, "clim_calc_monthly_working.R")) # - ER added
 source(paste0(hydroclim_path, R_path, "clim_calc_annual.R"))
 source(paste0(hydroclim_path, R_path, "clim_plot_monthly.R"))
-# source(paste0(hydroclim_path, R_path, "clim_plot_monthly_working.R")) # - ER added
-# source(paste0(hydroclim_path, R_path, "clim_plot_monthly_working_interactive.R")) # - ER added
 source(paste0(hydroclim_path, R_path, "clim_plot_annual.R"))
 source(paste0(hydroclim_path, R_path, "clim_plot_dayofyear.R"))
 source(paste0(hydroclim_path, R_path, "clim_plot_to_date.R"))
 source(paste0(hydroclim_path, R_path, "clim_plot_to_date_working.R")) # - ER added
-# source(paste0(hydroclim_path, R_path, "clim_plot_to_date_interactive_working.R")) # - ER added
 source(paste0(hydroclim_path, R_path, "clim_plot_timeseries.R"))
 # source(paste0(wf_path, "INF_plots.R"))
 
