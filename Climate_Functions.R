@@ -74,11 +74,6 @@ hydro_plot_dayofyear(
   dpi = 900,
   file_name = "Buffalo_24_2025",
   extension = "jpg")
-  #horizontal_line = F,
-  #hline_height = NA,
-  #interactive = T,
-  #y_axis_title = "Discharge (m3 s-1)",
-  #title.size = 14)
 
 ###################################################################################################
 
