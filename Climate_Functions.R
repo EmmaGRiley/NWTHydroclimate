@@ -247,7 +247,7 @@ plot
 
 ###################################################################################################
 
-test<-clim_plot_monthly_working(
+clim_plot_monthly(
   site = "Fort Smith",
   parameter = "temp",
   select_year = 2025,
@@ -270,18 +270,6 @@ test<-clim_plot_monthly_working(
   water_year = FALSE
 )
 
-
-plotly::ggplotly(test) %>%
-  plotly::ggplotly(tooltip = c("y", "x", "Year"))
-
-p <- plotly::plotly_build(test)
-
-p$x$data[1] <- lapply(p$x$data[1], FUN = function(x){
-  x$marker = list(opacity = 0)
-  return(x)
-})
-
-p
 ###################################################################################################
 
 
