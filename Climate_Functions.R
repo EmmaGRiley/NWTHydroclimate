@@ -21,12 +21,12 @@ source(paste0(wf_path, "update_climate.R"))
 clim_plot_timeseries(
   site = c("Peace River"),
   parameter = "rain",
-  start_year = "2003",
-  end_year = "2010",
+  start_year = "1950",
+  end_year = "2025",
   select_year = NA,
   water_year_start = 1,
-  zoom_x = c(as.Date("2008-10-01"), as.Date("2008-12-01")), #c(as.Date("yyyy-mm-dd"), as.Date("yyyy-mm-dd")) or NULL
-  zoom_y = NULL # c(min y value, max y value) or NULL,
+  zoom_x = NULL, #c(as.Date("yyyy-mm-dd"), as.Date("yyyy-mm-dd")) or NULL
+  zoom_y = NULL, # c(min y value, max y value) or NULL
   data_int = "daily",
   legend_position = c(1,2),
   line_colours = c("dodgerblue",
@@ -35,8 +35,10 @@ clim_plot_timeseries(
                   "red4",
                   "purple4",
                   "yellow4"),
-  save_data = F
+  save_data = F,
+  save_plot = F
 )
+
 
 ###################################################################################################
 
@@ -199,6 +201,52 @@ plot
 
 ###################################################################################################
 
+interactive <- hydro_plot_dayofyear(
+  station_number = "07SB001",
+  parameter = "level",
+  select_years = c(2024, 2025),
+  after_bennett = T,
+  historic_min = NA,
+  historic_max = 2023,
+  water_year_start = 1,
+  historic = TRUE,
+  log_scale = FALSE,
+  start_month = 01,
+  start_day = 01,
+  end_month = 12,
+  end_day = 31,
+  line_colours = c("dodgerblue",
+                   #"blue4",
+                   "green4",
+                   "red4",
+                   "purple4",
+                   "yellow4"),
+  legend_position = "top",
+  line_size = 0.5,
+  point_size = 0,
+  legend_text_size = 8,
+  y_min = NA,
+  y_max = NA,
+  save = TRUE,
+  plot_width = 18,
+  plot_height = 11,
+  dpi = 900,
+  file_name = "Default hydrometric plot",
+  extension = "png",
+  horizontal_line = F,
+  hline_height = NA,
+  interactive = T,
+  y_axis_title = "Water Level (m)" ,
+  title.size = 14)
+
+plot<-plotly::ggplotly(interactive, tooltip = c("y", "x", "colour", "ymin", "ymax", "yintercept"))
+
+plot <- plotly::plotly_build(plot)
+
+plot
+
+###################################################################################################
+
 clim_plot_monthly(
   site = "Fort Smith",
   parameter = "temp",
@@ -212,7 +260,7 @@ clim_plot_monthly(
   y_max = NA,
   select_year_point_size = 2,
   historic_point_size = 1,
-  legend_position = c(0.5, 0.95),
+  legend_position = c(0.1, 0.95),
   save = TRUE,
   plot_width = 18,
   plot_height = 11,
@@ -246,7 +294,7 @@ test<-clim_plot_to_date_working(
   extension = "png",
   water_year = F,
   plot_width = 20, #usually 16
-  plot_height = 10, #usually 10
+  plot_height = 10 #usually 10,
 )
 
 plotly::ggplotly(test) %>%
@@ -278,7 +326,7 @@ test<-clim_plot_to_date_working(
   y_max = 150,
   legend_position = c(0.5, 0.99),
   save = F,
-  file_name = paste0("All Total precip "),
+  file_name = paste0("All Total precip"),
   extension = "png",
   water_year = F,
   plot_width = 20, #usually 16
@@ -323,6 +371,14 @@ test <- clim_plot_annual(
 plotly::ggplotly(test) %>%
   plotly::ggplotly(tooltip = c("y", "x", "Year"))
 
+p <- plotly::plotly_build(test)
+
+p$x$data[1] <- lapply(p$x$data[1], FUN = function(x){
+  x$marker = list(opacity = 0)
+  return(x)
+})
+
+p
 ###################################################################################################
 
 clim_plot_to_date(
@@ -377,7 +433,7 @@ hydro_map_basin(
   Mack_basin = T,
   NWT_border = T,
   save = T,
-  sub_basin_delineate = F,
+  sub_basin_delineate = T,
   communities = c(  "Mackenzie",
                   "Peace River",
                   "Fort St John",
@@ -400,13 +456,35 @@ hydro_map_basin(
   cum_precip = T, #plots cumulative precipitation
   save_path = paste0(user, "NT_Hydrology/Figures"),
   select_year = 2025,
-  water_year_start = 4,
+  water_year_start = 10,
   water_year = F,
-  end_date = "2025-10-01",
+  end_date = "2025-12-01",
   plot_legend = T,
   adjust_manual_cum_precip = T, #change this to true if you are manually adjusting precip values based on gapfilling from FTS stns
   phantomjspath = paste0(user, "Modelling/Phantomjs/phantomjs/bin") #get phantomjs executable and save in similar directory
 )
+
+#Climate plot - daily timesteps
+#cannot set water_year = TRUE & cumulative = FALSE
+
+clim_plot_dayofyear(
+    site = "Yellowknife",
+    parameter = "precip",
+    start_year = 1953,
+    end_year = 2023,
+    select_years = c(2024, 2025),
+    cumulative = FALSE,
+    plot_width = 18,
+    plot_height = 11,
+    y_min = NA,
+    y_max = NA,
+    line_size = 1,
+    point_size = 0.5,
+    water_year = FALSE,
+    point_colours = c("dodgerblue","blue4","green4","red4","purple4","yellow4") #change these if plotting multiple years
+)
+
+
 
 
 
