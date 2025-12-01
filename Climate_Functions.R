@@ -344,7 +344,8 @@ clim_plot_to_date(
     plot_height = 10,
     dpi = 900,
     file_name = "SWE 2024",
-    extension = "png"
+    extension = "png",
+    water_year = T
 )
 
 ###################################################################################################
