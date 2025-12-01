@@ -278,7 +278,7 @@ test<-clim_plot_to_date_working(
   y_max = 150,
   legend_position = c(0.5, 0.99),
   save = F,
-  file_name = paste0("All Total precip ", report_date),
+  file_name = paste0("All Total precip "),
   extension = "png",
   water_year = F,
   plot_width = 20, #usually 16
@@ -404,7 +404,7 @@ hydro_map_basin(
   end_date = "2025-10-01",
   plot_legend = T,
   adjust_manual_cum_precip = T, #change this to true if you are manually adjusting precip values based on gapfilling from FTS stns
-  phantomjspath = "C:/Users/emma_riley/Documents/Modelling/Phantomjs/phantomjs/bin" #get phantomjs executable and save in similar directory
+  phantomjspath = paste0(user, /Documents/Modelling/Phantomjs/phantomjs/bin)" #get phantomjs executable and save in similar directory
 )
 
 
