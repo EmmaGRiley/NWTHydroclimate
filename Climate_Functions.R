@@ -242,7 +242,7 @@ test<-clim_plot_to_date_working(
   y_max = 250,
   legend_position = c(0.5, 0.99),
   save = T,
-  file_name = paste0("precip spring 2025 liard", report_date), 
+  file_name = paste0("precip spring 2025 liard"), 
   extension = "png",
   water_year = F,
   plot_width = 20, #usually 16
