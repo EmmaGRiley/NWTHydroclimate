@@ -355,7 +355,7 @@ clim_calc_annual(
     parameter = "rain",
     start_year = 1950,
     end_year = 2024,
-    #select_year = lubridate::year(Sys.Date()),
+    select_year = lubridate::year(Sys.Date()),
     water_year_start = 10
 )
 
@@ -364,7 +364,7 @@ clim_calc_monthly(
   parameter = "rain",
   start_year = 1950,
   end_year = 2024,
-  #select_year = lubridate::year(Sys.Date()),
+  select_year = lubridate::year(Sys.Date()),
   water_year_start = 1
 )
 
