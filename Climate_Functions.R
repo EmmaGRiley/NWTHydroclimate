@@ -153,52 +153,6 @@ plot <- plotly::plotly_build(plot)
 plot
 
 ###################################################################################################
-interactive <- hydro_plot_dayofyear_working(
-  station_number = "07NB001",
-  parameter = "flow",
-  select_years = c(2021, 2022, 2023, 2024),
-  after_bennett = T,
-  historic_min = NA,
-  historic_max = 2023,
-  water_year_start = 1,
-  historic = TRUE,
-  log_scale = FALSE,
-  start_month = 01,
-  start_day = 01,
-  end_month = 12,
-  end_day = 31,
-  line_colours = c("dodgerblue",
-                   #"blue4",
-                   "green4",
-                   "red4",
-                   "purple4",
-                   "yellow4"),
-  legend_position = "top",
-  line_size = 0.5,
-  point_size = 0,
-  legend_text_size = 8,
-  y_min = NA,
-  y_max = NA,
-  save = TRUE,
-  plot_width = 18,
-  plot_height = 11,
-  dpi = 900,
-  file_name = "Athabasca at Embarras flows",
-  extension = "png",
-  horizontal_line = F,
-  hline_height = NA,
-  title.size = 14,
-  interactive = T,
-  y_axis_title = "Discharge (m3 s-1)" #take this out for non-plotly plots = "Discharge (m3 s-1)",
-)
-
-plot<-plotly::ggplotly(interactive, tooltip = c("y", "x", "colour", "ymin", "ymax", "yintercept"))
-
-plot <- plotly::plotly_build(plot)
-
-plot
-
-###################################################################################################
 
 interactive <- hydro_plot_dayofyear_cumulative(
   station_number = "10PA002",
