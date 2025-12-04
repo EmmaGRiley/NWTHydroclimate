@@ -232,12 +232,7 @@ interactive <- hydro_plot_dayofyear(
   plot_height = 11,
   dpi = 900,
   file_name = "Default hydrometric plot",
-  extension = "png",
-  horizontal_line = F,
-  hline_height = NA,
-  interactive = T,
-  y_axis_title = "Water Level (m)" ,
-  title.size = 14)
+  extension = "png")
 
 plot<-plotly::ggplotly(interactive, tooltip = c("y", "x", "colour", "ymin", "ymax", "yintercept"))
 
