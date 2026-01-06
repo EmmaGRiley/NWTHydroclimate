@@ -1,0 +1,514 @@
+# =============================================================================
+# ERA5 Snow Trends Mapping - Functions
+# =============================================================================
+# This file contains all reusable functions for ERA5 snow trend analysis
+# Required by: ERA5_snowtrends_map_hourly.R
+# 
+# Functions included:
+# - interpret_acf: Interprets autocorrelation results for manual survey data
+# - interpret_acf_canswe: Interprets autocorrelation results for CanSWE data  
+# - serial_autocorr_test: Tests for serial autocorrelation in manual surveys
+# - serial_autocorr_test_canswe: Tests for serial autocorrelation in CanSWE data
+# - p.value.function: Determines plotting style based on p-values
+# - sen: Sen slope calculation wrapper
+# - appendvar: Utility function for variable matching
+# =============================================================================
+
+# =============================================================================
+# UTILITY FUNCTIONS
+# =============================================================================
+
+#' Append variable from one data frame to another
+#' 
+#' Utility function for matching and appending variables between data frames.
+#' 
+#' @param var1 Vector of values to match
+#' @param var2 Vector to match against
+#' @param var3 Vector of values to return
+#' @return Vector of matched values
+#' @export
+appendvar <- function(var1, var2, var3) {
+  var4 <- var3[match(var1, var2)]
+  return(var4)
+}
+
+# =============================================================================
+# AUTOCORRELATION INTERPRETATION FUNCTIONS
+# =============================================================================
+
+#' Interpret autocorrelation results for manual survey data
+#' 
+#' Interprets autocorrelation function (ACF) results from manual snow survey data,
+#' identifying significant lags and characterizing autocorrelation strength.
+#' 
+#' @param acf_results Data frame with autocorrelation test results. Must contain
+#'   columns: site, n_years, lag, acf
+#' @param only_autocorrelated Logical, if TRUE only return autocorrelated sites
+#' @return Data frame with interpreted autocorrelation results including:
+#'   \itemize{
+#'     \item site: Site name
+#'     \item sample_size: Number of years
+#'     \item significance_threshold: Statistical significance threshold
+#'     \item lag1_acf: Lag-1 autocorrelation value
+#'     \item lag1_significant: Whether lag-1 is significant
+#'     \item is_autocorrelated: Whether site shows autocorrelation
+#'     \item significant_lags: Number of significant lags
+#'     \item first_sig_lag: First significant lag
+#'     \item max_sig_lag: Lag with maximum autocorrelation
+#'     \item max_sig_acf: Maximum autocorrelation value
+#'     \item lag1_strength: Strength classification (None/Weak/Moderate/Strong)
+#'   }
+#' @export
+interpret_acf <- function(acf_results, only_autocorrelated = FALSE) {
+  # Initialize empty list to store results
+  all_summaries <- list()
+  
+  # Process each site
+  for (site in unique(acf_results$site)) {
+    # Add error handling for each site
+    tryCatch({
+      site_data <- acf_results[acf_results$site == site, ]
+      
+      # Check if site_data is empty or contains NA values
+      if (nrow(site_data) == 0 || all(is.na(site_data$acf))) {
+        warning(sprintf("Skipping site %s: insufficient data", site))
+        next
+      }
+      
+      n <- site_data$n_years
+      if (is.na(n) || n <= 0) {
+        warning(sprintf("Skipping site %s: invalid n_years", site))
+        next
+      }
+      
+      sig_threshold <- qnorm(0.975)/sqrt(n)
+      
+      # Safely extract and check lags
+      lags <- unlist(site_data$lag)
+      acf_values <- unlist(site_data$acf)
+      
+      if (length(lags) == 0 || length(acf_values) == 0) {
+        warning(sprintf("Skipping site %s: missing lag or ACF values", site))
+        next
+      }
+      
+      # More robust significant lags calculation
+      significant_lags <- logical(0)  # Initialize
+      lag_indices <- which(lags > 0)
+      
+      if (length(lag_indices) > 0) {
+        # Remove NA values before comparison
+        valid_acf <- acf_values[lag_indices]
+        valid_indices <- !is.na(valid_acf)
+        
+        if (any(valid_indices)) {
+          significant_lags <- valid_acf[valid_indices] > sig_threshold |
+            valid_acf[valid_indices] < -sig_threshold
+        } else {
+          significant_lags <- logical(0)
+        }
+      }
+      
+      # Identify details about which lags are significant
+      lag1_idx <- which(lags == 1)
+      lag1_acf_val <- if (length(lag1_idx)) acf_values[lag1_idx] else NA_real_
+      lag1_sig <- if (length(lag1_idx) && !is.na(lag1_acf_val)) abs(lag1_acf_val) > sig_threshold else FALSE
+      
+      sig_lags <- if (length(significant_lags) && any(significant_lags, na.rm = TRUE)) {
+        valid_lag_indices <- lag_indices[valid_indices]
+        valid_lag_indices[significant_lags]
+      } else integer(0)
+      first_sig_lag <- if (length(sig_lags)) min(sig_lags) else NA_integer_
+      
+      max_sig_lag <- if (length(sig_lags)) {
+        sig_acf <- acf_values[match(sig_lags, lags)]
+        sig_lags[which.max(abs(sig_acf))]
+      } else NA_integer_
+      
+      max_sig_acf <- if (!is.na(max_sig_lag)) acf_values[match(max_sig_lag, lags)] else NA_real_
+      
+      # Check if significant_lags is empty
+      if (length(significant_lags) == 0) {
+        warning(sprintf("Skipping site %s: no valid significant lags found", site))
+        next
+      }
+      
+      # Only proceed if we should include this site
+      if (!only_autocorrelated || any(significant_lags, na.rm = TRUE)) {
+        # Create summary
+        summary_row <- data.frame(
+          site = site,
+          sample_size = n,
+          significance_threshold = sig_threshold,
+          lag1_acf = lag1_acf_val,
+          lag1_significant = lag1_sig,
+          is_autocorrelated = any(significant_lags, na.rm = TRUE),
+          significant_lags = sum(significant_lags, na.rm = TRUE),
+          first_sig_lag = first_sig_lag,
+          max_sig_lag = max_sig_lag,
+          max_sig_acf = max_sig_acf,
+          lag1_strength = dplyr::case_when(
+            is.na(lag1_acf_val) ~ "Unknown",
+            abs(lag1_acf_val) > 0.4 ~ "Strong",
+            abs(lag1_acf_val) > 0.2 ~ "Moderate",
+            abs(lag1_acf_val) > 0.1 ~ "Weak",
+            TRUE ~ "None"
+          )
+        )
+        all_summaries[[length(all_summaries) + 1]] <- summary_row
+      }
+    }, error = function(e) {
+      warning(sprintf("Error processing site %s: %s", site, e$message))
+    })
+  }
+  
+  # Combine all summaries and return
+  if (length(all_summaries) > 0) {
+    return(do.call(rbind, all_summaries))
+  } else {
+    # Return empty data frame with correct column structure if no sites meet criteria
+    return(data.frame(
+      site = character(),
+      sample_size = numeric(),
+      significance_threshold = numeric(),
+      lag1_acf = numeric(),
+      lag1_significant = logical(),
+      is_autocorrelated = logical(),
+      significant_lags = numeric(),
+      first_sig_lag = integer(),
+      max_sig_lag = integer(),
+      max_sig_acf = numeric(),
+      lag1_strength = character(),
+      stringsAsFactors = FALSE
+    ))
+  }
+}
+
+#' Interpret autocorrelation results for CanSWE data
+#' 
+#' Interprets autocorrelation function (ACF) results from CanSWE data,
+#' identifying significant lags and characterizing autocorrelation strength.
+#' 
+#' @param acf_results_canswe Data frame with CanSWE autocorrelation test results.
+#'   Must contain columns: site, n_years, lag, acf
+#' @param only_autocorrelated Logical, if TRUE only return autocorrelated sites
+#' @return Data frame with interpreted autocorrelation results (same structure
+#'   as interpret_acf)
+#' @export
+interpret_acf_canswe <- function(acf_results_canswe, only_autocorrelated = FALSE) {
+  # Initialize empty list to store results
+  all_summaries <- list()
+  
+  # Process each site
+  for (site in unique(acf_results_canswe$site)) {
+    # Add error handling for each site
+    tryCatch({
+      site_data <- acf_results_canswe[acf_results_canswe$site == site, ]
+      
+      # Check if site_data is empty or contains NA values
+      if (nrow(site_data) == 0 || all(is.na(site_data$acf))) {
+        warning(sprintf("Skipping site %s: insufficient data", site))
+        next
+      }
+      
+      n <- site_data$n_years
+      if (is.na(n) || n <= 0) {
+        warning(sprintf("Skipping site %s: invalid n_years", site))
+        next
+      }
+      
+      sig_threshold <- qnorm(0.975)/sqrt(n)
+      
+      # Safely extract and check lags
+      lags <- unlist(site_data$lag)
+      acf_values <- unlist(site_data$acf)
+      
+      if (length(lags) == 0 || length(acf_values) == 0) {
+        warning(sprintf("Skipping site %s: missing lag or ACF values", site))
+        next
+      }
+      
+      # More robust significant lags calculation
+      significant_lags <- logical(0)  # Initialize
+      lag_indices <- which(lags > 0)
+      
+      if (length(lag_indices) > 0) {
+        # Remove NA values before comparison
+        valid_acf <- acf_values[lag_indices]
+        valid_indices <- !is.na(valid_acf)
+        
+        if (any(valid_indices)) {
+          significant_lags <- valid_acf[valid_indices] > sig_threshold |
+            valid_acf[valid_indices] < -sig_threshold
+        } else {
+          significant_lags <- logical(0)
+        }
+      }
+      
+      # Identify details about which lags are significant
+      lag1_idx <- which(lags == 1)
+      lag1_acf_val <- if (length(lag1_idx)) acf_values[lag1_idx] else NA_real_
+      lag1_sig <- if (length(lag1_idx)) abs(lag1_acf_val) > sig_threshold else FALSE
+      
+      sig_lags <- if (length(significant_lags) && any(significant_lags, na.rm = TRUE)) {
+        valid_lag_indices <- lag_indices[valid_indices]
+        valid_lag_indices[significant_lags]
+      } else integer(0)
+      first_sig_lag <- if (length(sig_lags)) min(sig_lags) else NA_integer_
+      
+      max_sig_lag <- if (length(sig_lags)) {
+        sig_acf <- acf_values[match(sig_lags, lags)]
+        sig_lags[which.max(abs(sig_acf))]
+      } else NA_integer_
+      
+      max_sig_acf <- if (!is.na(max_sig_lag)) acf_values[match(max_sig_lag, lags)] else NA_real_
+      
+      # Check if significant_lags is empty
+      if (length(significant_lags) == 0) {
+        warning(sprintf("Skipping site %s: no valid significant lags found", site))
+        next
+      }
+      
+      # Only proceed if we should include this site
+      if (!only_autocorrelated || any(significant_lags, na.rm = TRUE)) {
+        # Create summary
+        summary_row <- data.frame(
+          site = site,
+          sample_size = n,
+          significance_threshold = sig_threshold,
+          lag1_acf = lag1_acf_val,
+          lag1_significant = lag1_sig,
+          is_autocorrelated = any(significant_lags, na.rm = TRUE),
+          significant_lags = sum(significant_lags, na.rm = TRUE),
+          first_sig_lag = first_sig_lag,
+          max_sig_lag = max_sig_lag,
+          max_sig_acf = max_sig_acf,
+          lag1_strength = dplyr::case_when(
+            is.na(lag1_acf_val) ~ "Unknown",
+            abs(lag1_acf_val) > 0.4 ~ "Strong",
+            abs(lag1_acf_val) > 0.2 ~ "Moderate",
+            abs(lag1_acf_val) > 0.1 ~ "Weak",
+            TRUE ~ "None"
+          )
+        )
+        all_summaries[[length(all_summaries) + 1]] <- summary_row
+      }
+    }, error = function(e) {
+      warning(sprintf("Error processing site %s: %s", site, e$message))
+    })
+  }
+  
+  # Combine all summaries and return
+  if (length(all_summaries) > 0) {
+    return(do.call(rbind, all_summaries))
+  } else {
+    # Return empty data frame with correct column structure if no sites meet criteria
+    return(data.frame(
+      site = character(),
+      sample_size = numeric(),
+      significance_threshold = numeric(),
+      lag1_acf = numeric(),
+      is_autocorrelated = logical(),
+      significant_lags = numeric(),
+      lag1_strength = character(),
+      stringsAsFactors = FALSE
+    ))
+  }
+}
+
+# =============================================================================
+# AUTOCORRELATION TESTING FUNCTIONS
+# =============================================================================
+
+#' Test for serial autocorrelation in manual survey data
+#' 
+#' Tests for serial autocorrelation in manual snow survey data using
+#' autocorrelation function (ACF) and Ljung-Box test.
+#' 
+#' @param data Data frame with manual survey data. Must contain columns:
+#'   site, year, swe_cm, data_flag_1, data_flag_2, density, surface_type, activity
+#' @param start_year Starting year for analysis
+#' @param end_year Ending year for analysis
+#' @param flags Data quality flags to exclude
+#' @param hdensity High density threshold
+#' @param ldensity Low density threshold
+#' @param surface Surface types to include (e.g., "upland", "lake")
+#' @param act Activity types to include (e.g., "A", "IA")
+#' @param exclude_sites Sites to exclude from analysis
+#' @param only_autocorrelated Logical, if TRUE only return autocorrelated sites
+#' @return Data frame with autocorrelation test results including:
+#'   \itemize{
+#'     \item site: Site name
+#'     \item n_years: Number of years of data
+#'     \item lag: Vector of lag values
+#'     \item acf: Vector of ACF values
+#'     \item lb_lag: Lag used for Ljung-Box test
+#'     \item p_value: P-value from Ljung-Box test
+#'   }
+#' @export
+serial_autocorr_test <- function(data, start_year, end_year, flags, hdensity, ldensity, 
+                                 surface, act, exclude_sites, only_autocorrelated = FALSE) {
+  # First filter the data
+  filtered_data <- data %>%
+    dplyr::filter(
+      year >= start_year,
+      year <= end_year,
+      data_flag_1 %!in% flags,
+      data_flag_2 %!in% flags,
+      is.na(density) | density < hdensity,
+      is.na(density) | density > ldensity,
+      surface_type %in% surface,
+      activity %in% act
+    ) %>%
+    dplyr::group_by(site, year) %>%
+    dplyr::summarize(meanswe = mean(swe_cm, na.rm = TRUE), .groups = 'drop')
+  
+  # Process each site
+  results <- filtered_data %>%
+    dplyr::group_by(site) %>%
+    dplyr::summarize(
+      n_years = dplyr::n_distinct(year),
+      acf_result = list(acf(meanswe, plot = FALSE)),
+      # Calculate Ljung-Box test with appropriate lag
+      lb_lag = max(2, min(10, floor(n_years/4))),  # choose a reasonable joint lag
+      p_value = tryCatch({
+        Box.test(meanswe, type = "Ljung-Box", lag = lb_lag)$p.value
+      }, error = function(e) {
+        warning(sprintf("Ljung-Box test failed for site %s: %s", site, e$message))
+        NA_real_
+      })
+    ) %>%
+    dplyr::ungroup() %>%
+    dplyr::mutate(
+      lag = purrr::map(acf_result, ~.x$lag) %>% purrr::map(unlist),
+      acf = purrr::map(acf_result, ~.x$acf) %>% purrr::map(unlist)
+    ) %>%
+    dplyr::select(-acf_result)  # Remove the temporary acf_result column
+  
+  if (only_autocorrelated) {
+    results <- results %>%
+      dplyr::filter(p_value < 0.05)  # No need to unlist anymore
+  }
+  
+  return(results)
+}
+
+#' Test for serial autocorrelation in CanSWE data
+#' 
+#' Tests for serial autocorrelation in CanSWE data using autocorrelation
+#' function (ACF) and Ljung-Box test.
+#' 
+#' @param data Data frame with CanSWE data. Must contain columns: site, year, swe_cm
+#' @param start_year Starting year for analysis
+#' @param end_year Ending year for analysis
+#' @param only_autocorrelated Logical, if TRUE only return autocorrelated sites
+#' @return Data frame with autocorrelation test results (same structure as
+#'   serial_autocorr_test)
+#' @export
+serial_autocorr_test_canswe <- function(data, start_year, end_year, only_autocorrelated = FALSE) {
+  
+  #filter data
+  data <- data %>%
+    dplyr::group_by(site) 
+  
+  filtered_data <- data %>%
+    dplyr::filter(year >= start_year,
+                  year <= end_year) %>%    
+    dplyr::group_by(site) %>%
+    dplyr::mutate(no_years = dplyr::n_distinct(year)) %>%
+    dplyr::filter(no_years > min_year)
+  
+  # Process each site
+  results <- filtered_data %>%
+    dplyr::group_by(site) %>%
+    dplyr::summarize(
+      n_years = dplyr::n_distinct(year),
+      acf_result = list(acf(swe_cm, plot = FALSE)),
+      # Calculate Ljung-Box test with appropriate lag
+      lb_lag = max(2, min(10, floor(n_years/4))),  # choose a reasonable joint lag
+      p_value = tryCatch({
+        Box.test(swe_cm, type = "Ljung-Box", lag = lb_lag)$p.value
+      }, error = function(e) {
+        warning(sprintf("Ljung-Box test failed for site %s: %s", site, e$message))
+        NA_real_
+      })
+    ) %>%
+    dplyr::ungroup() %>%
+    dplyr::mutate(
+      lag = purrr::map(acf_result, ~.x$lag) %>% purrr::map(unlist),
+      acf = purrr::map(acf_result, ~.x$acf) %>% purrr::map(unlist)
+    ) %>%
+    dplyr::select(-acf_result)  # Remove the temporary acf_result column
+  
+  if (only_autocorrelated) {
+    results <- results %>%
+      dplyr::filter(p_value < 0.05)  # No need to unlist anymore
+  }
+  
+  return(results)
+}
+
+# =============================================================================
+# PLOTTING AND ANALYSIS FUNCTIONS
+# =============================================================================
+
+#' Determine plotting style based on p-values
+#' 
+#' Returns a ggplot2 geom_smooth object with appropriate styling based on
+#' significance levels from Mann-Kendall test results.
+#' 
+#' @param significance Significance level threshold
+#' @param mk.value Mann-Kendall test results (vector with p-value at index 2)
+#' @return ggplot2::geom_smooth object with appropriate color and size based on
+#'   significance level
+#' @export
+p.value.function <- function(significance, mk.value){
+  if (significance < 0.25 && significance > 0.1) { 
+    
+    if (mk.value[2] < 0.01) {
+      ggplot2::geom_smooth(method = sen, se=TRUE, colour = "gray20", size = 2)  
+    } else if (mk.value[2] < 0.05) {
+      ggplot2::geom_smooth(method = sen, se=TRUE, colour = "gray40", size = 1.5)
+    } else if (mk.value[2] < 0.1) {
+      ggplot2::geom_smooth(method = sen, se=TRUE, colour = "gray60", size = 1)
+    } else if (mk.value[2] < 0.25) {
+      ggplot2::geom_smooth(method = sen, se=TRUE, colour = "gray80", size = 1)
+    }
+    
+  } else if (significance >= 0.1) {
+    
+    if (mk.value[2] < 0.01) {
+      ggplot2::geom_smooth(method = sen, se=TRUE, colour = "gray20", size = 2)  
+    } else if (mk.value[2] < 0.05) {
+      ggplot2::geom_smooth(method = sen, se=TRUE, colour = "gray40", size = 1.5)
+    } else if (mk.value[2] < 0.1) {
+      ggplot2::geom_smooth(method = sen, se=TRUE, colour = "gray60", size = 1)
+    }
+    
+  } else if (significance >= 0.05) {
+    
+    if (mk.value[2] < 0.01) {
+      ggplot2::geom_smooth(method = sen, se=TRUE, colour = "gray20", size = 2)  
+    } else if (mk.value[2] < 0.05) {
+      ggplot2::geom_smooth(method = sen, se=TRUE, colour = "gray40", size = 1.5)
+    }
+    
+  } else if (significance <= 0.01) {
+    
+    if (mk.value[2] < 0.01) {
+      ggplot2::geom_smooth(method = sen, se=TRUE, colour = "gray20", size = 2)  
+    }
+  }
+}
+
+#' Sen slope calculation wrapper
+#' 
+#' Wrapper function for median-based linear model (Sen slope) calculation.
+#' 
+#' @param ... Arguments passed to mblm::mblm
+#' @param weights Optional weights parameter (not currently used)
+#' @return Sen slope estimation result from mblm::mblm
+#' @export
+sen <- function(..., weights = NULL) {
+  mblm::mblm(...)
+}

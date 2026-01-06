@@ -1,0 +1,53 @@
+# R
+.Rhistory
+.Rapp.history
+.RData
+.Ruserdata
+*.Rproj
+*.Rproj.user
+.DS_Store
+
+# Package files
+*.tar.gz
+*.zip
+.Rcheck/
+.Rinstignore
+
+# Documentation
+docs/
+vignettes/*.html
+vignettes/*.pdf
+
+# Build artifacts
+inst/doc/
+*.o
+*.so
+*.dll
+
+# Temporary files
+*.tmp
+*.log
+*.swp
+*~
+
+# Data files (if large)
+# Uncomment if you don't want to track large data files
+# data/*.csv
+# data/*.rds
+# data/*.nc
+
+# Output files
+*.html
+*.png
+*.pdf
+map_*.html
+swemap.html
+swesitemap.html
+
+# Environment variables
+.Renviron
+
+# IDE
+.idea/
+.vscode/
+

@@ -1,0 +1,42 @@
+Package: snow
+Type: Package
+Title: Snow Water Equivalent Analysis and Trend Detection
+Version: 0.1.0
+Authors@R: person("Emma Gregory", "Emma_Gregory", email = "emma_gregory@gov.nt.ca", role = c("aut", "cre"))
+Description: A comprehensive R package for analyzing snow water equivalent (SWE) data from manual snow surveys and ERA5-Land reanalysis data. The package provides tools for trend analysis using Mann-Kendall tests, autocorrelation detection, spatial mapping, and comparison between observational and reanalysis datasets. Designed for analysis of snow survey data in the Northwest Territories, Canada.
+License: MIT + file LICENSE
+Encoding: UTF-8
+LazyData: true
+RoxygenNote: 7.3.1
+Depends:
+    R (>= 4.0.0)
+Imports:
+    dplyr,
+    magrittr,
+    lubridate,
+    sf,
+    leaflet,
+    ggplot2,
+    Kendall,
+    trend,
+    modifiedmk,
+    purrr,
+    stringr,
+    tidyr,
+    htmlwidgets,
+    webshot,
+    terra,
+    sp
+Suggests:
+    testthat,
+    knitr,
+    rmarkdown,
+    KrigR,
+    spearmanCI,
+    mblm,
+    data.table
+Remotes:
+    github::ErikKusch/KrigR
+URL: https://github.com/EmmaGRiley/snow
+BugReports: https://github.com/EmmaGRiley/snow/issues
+
