@@ -1,5 +1,7 @@
 #Summary Snow Survey values
 
+user <- paste0("C:/Users/", tolower(Sys.getenv("USERNAME")))
+
 #bring in ss data (as GNWT employee)
 source(paste0(user, "Documents/R_Scripts/Packages/snow/R/R_oracle_connect.R"))
 

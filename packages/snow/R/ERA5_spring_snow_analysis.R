@@ -29,11 +29,11 @@ long_max = -95
 interval = 0.1
 
 #define api connection details
-api_user <- #API USER
-api_key <- #API KEY
+api_user <- "emma_riley@gov.nt.ca"
+api_key <- "3bbd209c-ca7d-4aec-85f9-d764a16bbc9d"
 
 #define file names
-file <- "spring_max_"
+file <- "Feb_max_"
 
 # Create extent object for KrigR
 study_extent <- terra::ext(c(long_min, long_max, lat_min, lat_max))
@@ -48,12 +48,12 @@ spring_max_snow <- data.frame(
 # Function to download and process spring snow depth for a single year
 get_spring_snow <- function(year) {
   # Define date range for spring (March-May)
-  date_start <- paste0(year, "-03-01 00:00") #change these each time according to date. default "-03-01 00:00"
-  date_stop <- paste0(year, "-05-31 23:00") #change these each time according to date. default "-05-31 23:00"
+  date_start <- paste0(year, "-02-01 00:00") #change these each time according to date. default "-02-01 00:00"
+  date_stop <- paste0(year, "-03-01 23:00") #change these each time according to date. default "-05-31 23:00"
   
   # Download data using CDownloadS
   snow_data <- CDownloadS(
-    Variable = "snow_depth",
+    Variable = "snow_depth_water_equivalent",
     DataSet = "reanalysis-era5-land",  # ERA5-Land dataset
     Type = NA,  # Not needed for ERA5-Land
     DateStart = date_start,
@@ -110,19 +110,29 @@ for (year in 1995:2025) {
     points_vect <- terra::vect(coord_grid, geom = c("lon", "lat"), crs = terra::crs(snow_data))
 
     point_values <- terra::extract(snow_data, points_vect)[, -1]  # drop ID col
-
+    
     # Diagnostic check on extraction
     if (ncol(point_values) != terra::nlyr(snow_data)) {
       stop("Mismatch between extracted columns and raster layers.")
     }
-
-    # Optionally show first row's time series
-    cat("  → Sample snow depth time series at first point:\n")
-    print(round(point_values[1, 1:min(10, ncol(point_values))], 2))  # first 10 time values
+    
+    cat("Raw range:   ", range(point_values, na.rm = TRUE), "\n")
+    
+    #filtering values
+    FILL <- -1.175494e+38 #.nc file fill value
+    vals_clean <- point_values
+    vals_clean[vals_clean <= -1e30] <- NA          # remove fill
+    vals_clean[vals_clean == 10] <- NA             # glacier flag
+    vals_clean[vals_clean < 0 & abs(vals_clean) < 1e-12] <- 0  # clamp underflow
+    vals_clean[vals_clean < 0 | vals_clean > 10] <- NA         # physical bounds
+    
+    cat("Clean range: ", range(vals_clean, na.rm = TRUE), "\n")
+    
+    # Compute per-point max over time
+    point_max <- apply(vals_clean, 1, max, na.rm = TRUE)
 
     # Compute max across time (each row = a point)
-    point_max <- apply(point_values, 1, max, na.rm = TRUE)
-    # Alternatively, use: point_max <- matrixStats::rowMaxs(as.matrix(point_values), na.rm = TRUE)
+    point_max <- apply(vals_clean, 1, max, na.rm = TRUE)
 
     # Replace Inf values
     inf_count <- sum(is.infinite(point_max))
@@ -161,3 +171,144 @@ for (year in 1995:2025) {
 }
 
 write.csv(combined_max_snow, (paste0(user, "/Documents/R_Scripts/Packages/ERA5/data/SWEmax_dataset/", file, "_combined_max_snow.csv")))
+
+#combining february max snow and march 1 - May 31st march snow
+#replace max snow values in march 1-may 31 data if the february value is higher
+
+combined_max_snow_feb <-  read.csv(paste0(user, "/Documents/R_Scripts/Packages/ERA5/data/SWEmax_dataset/feb_max__combined_max_snow.csv")) %>%
+  dplyr::select(-c(X))
+
+combined_max_snow_marchmay <-  read.csv(paste0(user, "/Documents/R_Scripts/Packages/ERA5/data/SWEmax_dataset/combined_max_snow_march_may.csv")) %>%
+  dplyr::select(-c(X))
+  
+#pivot dataframe
+
+combined_max_snow_marchmay <- combined_max_snow_marchmay %>%
+  tidyr::pivot_longer(cols = dplyr::starts_with("Snow_") & !dplyr::matches("Snow_Avg"),
+                      names_to = "sd_year",
+                      names_prefix = "Snow_",
+                      values_to = "sd") %>%
+  dplyr::rename(Latitude = lat,
+                Longitude = lon) 
+
+combined_max_snow_marchmay <- combined_max_snow_marchmay %>%
+  dplyr::select(Latitude, Longitude, sd, sd_year)
+
+combined_max_snow_feb <- combined_max_snow_feb %>%
+  tidyr::pivot_longer(cols = dplyr::starts_with("Snow_") & !dplyr::matches("Snow_Avg"),
+                      names_to = "sd_year",
+                      names_prefix = "Snow_",
+                      values_to = "sd") %>%
+  dplyr::rename(Latitude = lat,
+                Longitude = lon)
+
+combined_max_snow_feb <- combined_max_snow_feb %>%
+  dplyr::select(Latitude, Longitude, sd, sd_year) 
+
+#filter datasets to MRB
+proj <- '+proj=longlat +datum=WGS84'
+
+combined_max_snow_sf <- sf::st_as_sf(combined_max_snow_feb, coords = c("Longitude", "Latitude"), crs = proj)
+combined_max_snow_marchmay_sf <- sf::st_as_sf(combined_max_snow_marchmay, coords = c("Longitude", "Latitude"), crs = proj)
+
+Mack <- sf::st_read(paste0(user, "/Documents/R_Scripts/Packages/snow/data/Shapefiles/MackenzieRiverBasin_FDA.shp"),
+                    layer = "MackenzieRiverBasin_FDA")
+Mack <- sf::st_transform(Mack, sp::CRS(proj)) # Change the projection
+Mack <- sf::st_zm(Mack)
+combined_max_snow_sf <- sf::st_intersection(combined_max_snow_sf, Mack)
+combined_max_snow_marchmay_sf <- sf::st_intersection(combined_max_snow_marchmay_sf, Mack)
+
+#update march_may max where february max is higher
+
+add_coords <- function(x) {
+  xy <- sf::st_coordinates(x)
+  x %>%
+    sf::st_drop_geometry() %>%
+    mutate(
+      Longitude = xy[, 1],
+      Latitude  = xy[, 2]
+    )
+}
+
+round_key <- function(x, digits = 4) round(x, digits)
+
+# Extract coords + standardize keys
+
+safe_max <- function(x) {
+  x <- x[is.finite(x)]
+  if (length(x) == 0) NA_real_ else max(x)
+}
+
+feb_df <- add_coords(combined_max_snow_sf) %>%
+  mutate(
+    Longitude = round_key(Longitude, 4),
+    Latitude  = round_key(Latitude, 4),
+    year      = as.integer(sd_year),
+    sd_all    = sd
+  ) %>%
+  select(Longitude, Latitude, year, sd_all)
+
+mm_df <- add_coords(combined_max_snow_marchmay_sf) %>%
+  mutate(
+    Longitude = round_key(Longitude, 4),
+    Latitude  = round_key(Latitude, 4),
+    year      = as.integer(sd_year),
+    sd_mm     = sd
+  ) %>%
+  select(Longitude, Latitude, year, sd_mm)
+
+
+# De-duplicate (st_intersection can replicate boundary points)
+
+feb_df <- feb_df %>%
+  group_by(Longitude, Latitude, year) %>%
+  summarise(sd_all = safe_max(sd_all), .groups = "drop")
+
+mm_df <- mm_df %>%
+  group_by(Longitude, Latitude, year) %>%
+  summarise(sd_mm = safe_max(sd_mm), .groups = "drop")
+
+
+# Join + replace where february is higher
+# Keep the March–May grid as the "base" and update it.
+
+mm_updated <- mm_df %>%
+  left_join(feb_df, by = c("Longitude", "Latitude", "year")) %>%
+  mutate(
+    sd_updated = case_when(
+      !is.na(sd_all) & !is.na(sd_mm) & sd_all > sd_mm ~ sd_all,
+      TRUE ~ sd_mm
+    ),
+    was_replaced = !is.na(sd_all) & !is.na(sd_mm) & (sd_all > sd_mm),
+    diff_added = if_else(was_replaced, sd_all - sd_mm, 0)
+  )
+
+# QA summaries
+
+qa_overall <- mm_updated %>%
+  summarise(
+    n_total = n(),
+    n_matched_all = sum(!is.na(sd_all)),
+    n_replaced = sum(was_replaced, na.rm = TRUE),
+    replaced_pct_of_total = 100 * n_replaced / n_total,
+    added_mean = mean(diff_added[was_replaced], na.rm = TRUE),
+    added_median = median(diff_added[was_replaced], na.rm = TRUE),
+    added_max = max(diff_added[was_replaced], na.rm = TRUE)
+  )
+
+qa_by_year <- mm_updated %>%
+  group_by(year) %>%
+  summarise(
+    n_total = n(),
+    n_replaced = sum(was_replaced, na.rm = TRUE),
+    replaced_pct = 100 * n_replaced / n_total,
+    added_mean = mean(diff_added[was_replaced], na.rm = TRUE),
+    added_max = max(diff_added[was_replaced], na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  arrange(year)
+
+print(qa_overall)
+print(head(qa_by_year, 10))
+
+write.csv(mm_updated, paste0(getwd(), "/ERA5_updatedfeb_may.csv"))

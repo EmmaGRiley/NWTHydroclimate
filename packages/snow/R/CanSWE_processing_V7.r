@@ -1,5 +1,8 @@
 #Creating summarized CanSWE from multi-point snow surveys
 
+library(dplyr)
+library(lubridate)
+
 # Define `%>%` operator in current environment
 `%>%` <- magrittr::`%>%`
 
@@ -15,19 +18,17 @@ canswe_24 <- read.csv(paste0(file_path, "CanSWE-CanEEN_1928-2024_v7.csv")) %>%
                 "Longitude"="lon")
 
 #filter time and flags
-data_flags <- c("b'M'", "b'W'", "b'M'", "b'B'", "b'E'", "b'C'", "b'G'", "b'A'", "b'D'")
+data_flags <- c("b'M'", "b'W'", "b'B'", "b'E'", "b'C'", "b'G'", "b'A'", "b'D'")
 
 canswe_24_ <- canswe_24 %>%
-  dplyr::select(station_id, station_name, time, Latitude, Longitude, elevation, source, station_name, type_mes, snw, snd, den, data_flag_snw, data_flag_snd, qc_flag_snd, qc_flag_snw) %>%
+  dplyr::select(station_id, station_name, time, Latitude, Longitude, elevation, source, type_mes, snw, snd, den, data_flag_snw, data_flag_snd, qc_flag_snd, qc_flag_snw) %>%
   dplyr::mutate(time = lubridate::ymd(time),
                 year = lubridate::year(time)) %>%
-  dplyr::filter(year >= 1995 & year < 2025,
+  dplyr::filter(year >= 1995, #filter for years starting in 1995
                 type_mes == 0,
                 data_flag_snw %!in% data_flags, #filtering out agency data flags
                 qc_flag_snw %!in% data_flags) %>% #filtering out canswe data flags
   dplyr::group_by(station_name) %>%
-  dplyr::mutate(YearsofRecord = n_distinct(year)) %>%
-  dplyr::filter(YearsofRecord >= 21.75) %>%
   dplyr::rename("id" = "station_id") %>%
   dplyr::select(id, station_name, source, time, snw, snd, den, Latitude, Longitude, type_mes, elevation, year) %>%
   dplyr::filter(is.na(snw)==FALSE)
@@ -44,7 +45,19 @@ missingBC <- read.csv(paste0(file_path, "missingBCdata.csv")) %>%
   dplyr::select(id, station_name, source, time, snw, snd, den, Latitude, Longitude, type_mes, elevation, year) %>%
   dplyr::filter(is.na(snw)==FALSE)
 
-CANswe <- rbind(canswe_24_, missingBC)
+#append 2025 values not yet included in CanSWE
+CANswe2025 <- read.csv(paste0(file_path, "2025surveys.csv")) %>%
+  dplyr::select(station_id, station_name, time, Latitude, Longitude, elevation, source, station_name, type_mes, snw, snd, den, data_flag_snw, data_flag_snd, qc_flag_snd, qc_flag_snw) %>%
+  dplyr::mutate(time = lubridate::mdy(time),
+                year = lubridate::year(time)) %>%
+  dplyr::filter(type_mes == 0,
+                data_flag_snw %!in% data_flags, #filtering out agency data flags
+                qc_flag_snw %!in% data_flags) %>% #filtering out canswe data flags
+  dplyr::rename("id" = "station_id") %>%
+  dplyr::select(id, station_name, source, time, snw, snd, den, Latitude, Longitude, type_mes, elevation, year) %>%
+  dplyr::filter(is.na(snw)==FALSE)
+
+CANswe <- rbind(canswe_24_, missingBC, CANswe2025)
 
 CANswe <- CANswe %>%
   dplyr::group_by(station_name, year) %>%
@@ -54,5 +67,5 @@ CANswe <- CANswe %>%
 CANswe <- unique(CANswe)
 
 #write out results
-write.csv(CANswe, paste0(file_path, "CanSWE_v7_V2.csv"))
+write.csv(CANswe, paste0(file_path, "CanSWE_v7.csv"))
 

@@ -4,8 +4,8 @@
 library(leaflet)
 
 #variables
-file <- "Dec31"
-current_year <- 2025
+file <- "Jan1_max_"
+current_year <- 2026
 
 #mapping variables
 selected_layer = "all"
@@ -17,9 +17,8 @@ save = T
 #set web shot path
 Sys.setenv(PATH = paste0(user, "/Documents/Modelling/phantomjs/phantomjs/bin")) #can install phantomjs executable here: webshot::install_phantomjs()
 
-ERA5_snow <- read.csv(paste0(user, "/Documents/R_Scripts/Packages/ERA5/data/SWEmax_dataset/", file, "_combined_max_snow.csv")) #%>%
-  #dplyr::select(-c(X, Snow_1995.y)) %>%
-  #dplyr::rename("Snow_1995" = "Snow_1995.x")
+ERA5_snow <- read.csv(paste0(user, "/Documents/R_Scripts/Packages/ERA5/data/SWEmax_dataset/", file, "_combined_max_snow.csv")) %>%
+  dplyr::select(-c(X)) 
 
 #pivot dataframe
 ERA5_snow <- ERA5_snow %>%
@@ -36,10 +35,9 @@ ERA5_snow <- ERA5_snow %>%
 
 #filter out glaciers and negative values
 ERA5_snow <- ERA5_snow %>%
-  dplyr::select(Latitude, Longitude, sd, sd_year) %>%
-  dplyr::filter(sd != 10, sd >= 0)
+  dplyr::select(Latitude, Longitude, sd, sd_year)
 
-#create average from 1995-2024 data (rolling average)
+#create average from 1995-2025 data (rolling average)
 ERA5_snow <- ERA5_snow %>%
   dplyr::group_by(Longitude, Latitude) %>%
   dplyr::mutate(Snow_Avg = mean(sd[sd_year != current_year], na.rm=T))
@@ -97,7 +95,7 @@ sd_values_sf <- sd_values_sf %>%
 PerCol_gridded <- leaflet::colorFactor(palette = "RdYlBu", sd_values_sf$Bin)
 
 map <- leaflet() %>%
-  leaflet::addProviderTiles(providers$CartoDB.PositronNoLabels, group = "CartoDB")
+  leaflet::addProviderTiles(leaflet::providers$CartoDB.PositronNoLabels, group = "CartoDB")
 
 map <- map %>%
   leaflet::addCircleMarkers(data = sd_values_sf,

@@ -36,11 +36,8 @@ source(paste0(user, "/Documents/R_Scripts/Packages/snow/R/ERA5_snowtrends_map_ho
 # for non-GNWT users, download data (point_data.csv and sites.csv) from https://doi.org/10.46887/2025-005
 # or use data from the /data folder of this package
 md_3 <- readRDS(paste0(user,"/Documents/R_Scripts/Packages/snow/data/md_3.rds"))
-sites <- readRDS(paste0(user,"/Documents/R_Scripts/Packages/snow/data/sites.rds"))
 
-# Filter for 1995-2024 analysis
-md_3 <- md_3 %>%
-  dplyr::filter(year < 2025)
+sites <- readRDS(paste0(user,"/Documents/R_Scripts/Packages/snow/data/sites.rds"))
 
 # Load CanSWE data - download version 7 of Canswe and run CanSWE_processing_V7.R first
 canswe <- read.csv(paste0(user, "/Documents/R_Scripts/Packages/snow/data/", "CanSWE_v7.csv")) %>%
@@ -74,6 +71,9 @@ nwt_elevation_data <- read.csv(paste0(user, "/Documents/R_Scripts/Packages/snow/
 
 nwt_elevation_data <- unique(nwt_elevation_data)
 
+# bring in high res coordinates for later mapping and analysis
+coordinates_high_res <- read.csv(paste0(user, "/Documents/R_Scripts/Packages/snow/data/site_coordinates_highres.csv"))
+
 # =============================================================================
 # ANALYSIS PARAMETERS
 # =============================================================================
@@ -94,11 +94,10 @@ significantonly <- FALSE
 comparemanual <- TRUE
 
 # Data parameters
-snowvar <- sd
 data <- md_3
 start_year <- 1995
-end_year <- 2024
-min_year <- (end_year - start_year) * 0.75
+end_year <- 2025
+min_year <- (31) * 0.75
 p.value <- 0.05
 exclude_sites <- NA
 
@@ -118,27 +117,15 @@ ldensity <- 0.1
 
 # Load ERA5-Land snow data
 # must run ERA5_spring_snow_analysis.R first to create the spring max snow depth dataset
-ERA5_snow <- read.csv(paste0(user, "/Documents/R_Scripts/Packages/snow/data/SWEmax_dataset/spring_max_snow_depth_combined.csv")) %>%
-  dplyr::select(-c(X))
-  
-#pivot dataframe
-  ERA5_snow <- ERA5_snow %>%
-    tidyr::pivot_longer(
-      cols = dplyr::starts_with("Snow_") & !dplyr::matches("Snow_Avg"),
-      names_to = "sd_year",
-      names_prefix = "Snow_",
-      values_to = "sd"
-    ) %>%
-    dplyr::rename(
-      Latitude = lat,
-      Longitude = lon
-    )
-  
-  #filter out glaciers
-  ERA5_snow <- ERA5_snow %>%
-    dplyr::select(Latitude, Longitude, sd, sd_year, Snow_Avg) %>%
-    dplyr::filter(sd != 10)
 
+ERA5_snow <- read.csv(paste0(user, "/Documents/R_Scripts/Packages/snow/ERA5_updatedfeb_may.csv")) %>%
+  dplyr::select(-c(X))
+
+ERA5_snow <- ERA5_snow %>%
+  dplyr::select(Latitude, Longitude, sd_updated, year) %>%
+  dplyr::rename("sd" = "sd_updated",
+                "sd_year" = "year")
+  
   # Define the bounding box and coordinate resolution (rounded to the nearest 0.1)
   lat_seq <- seq(lat_min, lat_max, by = interval)
   lon_seq <- seq(long_min, long_max, by = interval)
@@ -149,8 +136,7 @@ ERA5_snow <- read.csv(paste0(user, "/Documents/R_Scripts/Packages/snow/data/SWEm
     Longitude = numeric(),
     Tau = numeric(),
     P_value = numeric(),
-    Sen_slope = numeric(),
-    meanmaxswe = numeric()
+    Sen_slope = numeric()
   )
 
   autocorr_summary <- data.frame(
@@ -200,9 +186,6 @@ ERA5_snow <- read.csv(paste0(user, "/Documents/R_Scripts/Packages/snow/data/SWEm
       }
 
       sen_slope <- trend::sens.slope(na.omit(max_snow$sd))
-      
-      #add in mean max swe
-      meanmaxswe <- unique(max_snow$Snow_Avg)
 
       if(!is.na(p_value) && p_value < 0.05) {
         # Store the results in the data frame
@@ -212,8 +195,7 @@ ERA5_snow <- read.csv(paste0(user, "/Documents/R_Scripts/Packages/snow/data/SWEm
             Longitude = lon,
             Tau = test_mk[1],
             P_value = test_mk[2],
-            Sen_slope = test_mk[7],
-            meanmaxswe = meanmaxswe
+            Sen_slope = test_mk[7]
           )
       }else{
         trend_results <- trend_results %>%
@@ -222,8 +204,7 @@ ERA5_snow <- read.csv(paste0(user, "/Documents/R_Scripts/Packages/snow/data/SWEm
             Longitude = lon,
             Tau = test_mk$tau,
             P_value = test_mk$sl,
-            Sen_slope = sen_slope$estimates,
-            meanmaxswe = meanmaxswe
+            Sen_slope = sen_slope$estimates
           )
       }
     }
@@ -237,12 +218,26 @@ ERA5_snow <- read.csv(paste0(user, "/Documents/R_Scripts/Packages/snow/data/SWEm
     acf_strength = table(cut(abs(autocorr_summary$ACF_value),
                              breaks = c(0, 0.1, 0.2, 0.4, 1),
                              labels = c("Weak", "Moderate", "Strong", "Very Strong"))))
+  
+  #computer meanmaxswe column
+  meanmax_by_cell <- ERA5_snow %>%
+    dplyr::mutate(
+      sd_year = as.integer(sd_year),
+      sd = as.numeric(sd)
+    ) %>%
+    dplyr::group_by(Latitude, Longitude) %>%
+    dplyr::summarise(
+      meanmaxswe = mean(sd, na.rm = TRUE)
+    )
+  
+  trend_results <- trend_results %>%
+    dplyr::left_join(meanmax_by_cell, by = c("Latitude", "Longitude"))
 
 
   #option to save and then bring in trend_results locally
-  write.csv(trend_results, paste0(savepath, "/trendresults_serialautocorr_hourly_95_24_MRB.csv"))
-  write.csv(autocorr_stats, paste0(savepath, "/autocorr_stats_hourly_95_24_MRB.csv"))
-  write.csv(autocorr_summary, paste0(savepath, "/autocorr_summary_hourly_95_24_MRB.csv") )
+  write.csv(trend_results, paste0(savepath, "trendresults_serialautocorr_hourly_95_24_MRB.csv"))
+  write.csv(autocorr_stats, paste0(savepath, "autocorr_stats_hourly_95_24_MRB.csv"))
+  write.csv(autocorr_summary, paste0(savepath, "autocorr_summary_hourly_95_24_MRB.csv"))
   
  
   ##################################################################################################################################
@@ -292,31 +287,12 @@ ERA5_snow <- read.csv(paste0(user, "/Documents/R_Scripts/Packages/snow/data/SWEm
       )
     )
   
-  #filter trend results with data points over lakes
-  trend_sf <- trend_sf[trend_sf$Sen_slope != 0, ]
-  
-  PerCol <- leaflet::colorFactor(palette = "RdYlBu", trend_sf$Bin, na.color = NA)
-  
-  map <- leaflet::leaflet() %>%
-     leaflet::addProviderTiles(leaflet::providers$CartoDB.PositronNoLabels, group = "CartoDB")
-  
-  map <- map %>%
-    leaflet::addCircleMarkers(data = trend_sf,
-                              fillColor = ~PerCol(trend_sf$Bin),
-                              fillOpacity = ifelse(trend_sf$P_value<0.05, 1, 0.5),
-                              weight = ifelse(trend_sf$P_value<0.05, 1, 0),
-                              radius = 1.5, 
-                              color = "black") %>%
-    leaflet::addScaleBar(position = "bottomright")
-  
 # =============================================================================
 # MANUAL SURVEY TREND ANALYSIS
 # =============================================================================
 # This section performs Mann-Kendall trend analysis on manual snow survey data
 # and compares results with ERA5-Land analysis
 # =============================================================================
-
-if(comparemanual == TRUE){
     
     sitename = unique(data$site[!(data$site%in% exclude_sites)])
     table <- data.frame()
@@ -336,7 +312,8 @@ if(comparemanual == TRUE){
     
     acf_results_canswe <- serial_autocorr_test_canswe(data = canswe,
                                                       start_year = start_year,
-                                                      end_year = end_year)
+                                                      end_year = end_year,
+                                                      min_year = min_year)
     
     # Get interpretation of autocorrelation
     autocorr_sites <- interpret_acf(acf_results, only_autocorrelated = TRUE)
@@ -501,44 +478,41 @@ if(comparemanual == TRUE){
       }
     }
     
-    Table <- table %>%
+    SiteTable <- table %>%
       dplyr::group_by(Site_name) %>%
-      dplyr::reframe(Magnitude = sample(Magnitude*100),
-                     `p-value` = sample(`p-value`),
-                     Significance = sample(Significance),
-                     `Years of Record` = sample(`Years of Record`),
-                     Method = sample(Method),
-                     sitemeanswe = sample(sitemeanswe)) %>%  # Add Method to output
+      dplyr::reframe(Magnitude = dplyr::first(Magnitude*100),
+                     `p-value` = dplyr::first(`p-value`),
+                     Significance = dplyr::first(Significance),
+                     `Years of Record` = dplyr::first(`Years of Record`),
+                     Method = dplyr::first(Method),
+                     sitemeanswe = dplyr::first(sitemeanswe)) %>%  # Add Method to output
       dplyr::filter(`Years of Record` > min_year)
     
-    SiteTable = unique(Table)
-    
-    Table_canswe <- table_canswe %>%
+    SiteTable_canswe <- table_canswe %>%
       dplyr::group_by(site) %>%
-      dplyr::reframe(Magnitude = sample(Magnitude*100),
-                     `p-value` = sample(`p-value`),
-                     Significance = sample(Significance),
-                     `Years of Record` = sample(`Years of Record`),
-                     Method = sample(Method),
-                     sitemeanswe = sample(sitemeanswe)) %>%  # Add Method to output
+      dplyr::reframe(Magnitude = dplyr::first(Magnitude*100),
+                     `p-value` = dplyr::first(`p-value`),
+                     Significance = dplyr::first(Significance),
+                     `Years of Record` = dplyr::first(`Years of Record`),
+                     Method = dplyr::first(Method),
+                     sitemeanswe = dplyr::first(sitemeanswe)) %>%  # Add Method to output
       dplyr::filter(`Years of Record` > min_year)
     
-    SiteTable_canswe = unique(Table_canswe)
-    
-    longitude = appendvar(var1=SiteTable_canswe$site, var2 = canswe$site, var3 = canswe$Longitude)
-    latitude = appendvar(var1=SiteTable_canswe$site, var2 = canswe$site, var3 = canswe$Latitude)
+    longitude = appendvar(var1=SiteTable_canswe$site, var2 = coordinates_high_res$Site_name, var3 = coordinates_high_res$Longitude)
+    latitude = appendvar(var1=SiteTable_canswe$site, var2 = coordinates_high_res$Site_name, var3 = coordinates_high_res$Latitude)
     elevation = appendvar(var1=SiteTable_canswe$site, var2 = canswe$site, var3 = canswe$elevation)
     MapTable_canswe<-cbind(SiteTable_canswe, longitude, latitude, elevation) 
     
     MapTable_canswe <- MapTable_canswe %>%
       dplyr::rename("Site_name" = "site")
     
-    longitude = appendvar(var1=SiteTable$Site_name, var2 = sites$site_name, var3 = sites$lng)
-    latitude = appendvar(var1=SiteTable$Site_name, var2 = sites$site_name, var3 = sites$lat)
+    longitude = appendvar(var1=SiteTable$Site_name, var2 = coordinates_high_res$Site_name, var3 = coordinates_high_res$Longitude)
+    latitude = appendvar(var1=SiteTable$Site_name, var2 = coordinates_high_res$Site_name, var3 = coordinates_high_res$Latitude)
     elevation = appendvar(var1 = SiteTable$Site_name, var2 = nwt_elevation_data$site, nwt_elevation_data$elevation)
     
     MapTable<-cbind(SiteTable, longitude, latitude, elevation)
-    MT = rbind(MapTable, MapTable_canswe)
+    MT = rbind(MapTable, MapTable_canswe) %>%
+      dplyr::filter(is.na(longitude)==F)
     
     # #filter significant results only
     if (significantonly == T){
@@ -574,6 +548,85 @@ if(comparemanual == TRUE){
       sf::st_drop_geometry()
     
     #write.csv(MT_tbl, paste0(user, "/Documents/R_Scripts/Packages/snow/data/MRB_snowsurvey_trends.csv"))
+  
+    trends <- trend_sf %>%
+      dplyr::select(P_value, mm_SWE_per_decade, Bin, geometry)
+    
+    xy <- sf::st_coordinates(trends)
+    
+    trends_df <- dplyr::bind_cols(
+      sf::st_drop_geometry(trends),
+      tibble::tibble(lon = xy[,1], lat = xy[,2])
+    ) %>%
+      dplyr::filter(is.finite(lon), is.finite(lat))
+    
+    sig_df <- trends_df %>%
+      dplyr::filter(P_value < 0.05)
+    
+    PerCol_gridded <- leaflet::colorFactor(
+      palette  = "RdYlBu",
+      domain   = trends_df$Bin,
+      na.color = "#BDBDBD"
+    )
+    
+    PerCol_gridded_sig <- leaflet::colorFactor(
+      palette  = "RdYlBu",
+      domain   = sig_df$Bin,
+      na.color = "#BDBDBD"
+    )
+    
+    make_grid_chunks <- function(df, nx = 5, ny = 5) {
+      xr <- range(df$lon, finite = TRUE)
+      yr <- range(df$lat, finite = TRUE)
+      
+      x_breaks <- seq(xr[1], xr[2], length.out = nx + 1)
+      y_breaks <- seq(yr[1], yr[2], length.out = ny + 1)
+      
+      df %>%
+        mutate(
+          xbin = cut(lon, breaks = x_breaks, include.lowest = TRUE, labels = FALSE),
+          ybin = cut(lat, breaks = y_breaks, include.lowest = TRUE, labels = FALSE),
+          chunk_id = paste0("x", xbin, "_y", ybin)
+        ) %>%
+        filter(!is.na(chunk_id))  # defensive
+    }
+    
+    add_chunk <- function(map, df_chunk, pal) {
+      if (nrow(df_chunk) == 0) return(map)
+      
+      map %>%
+        leaflet::addCircleMarkers(
+          data = df_chunk,
+          lng = ~lon, lat = ~lat,
+          fillColor   = ~PerCol_gridded(Bin),
+          fillOpacity = 0.5,
+          weight      = 0,            # performance: drop stroke
+          radius      = 1.5,
+          stroke      = F        # performance: huge win
+        )
+    }
+    
+    trends_chunked <- make_grid_chunks(trends_df, nx = 5, ny = 5)
+    
+    map <- leaflet::leaflet(trends_df, options = leaflet::leafletOptions(preferCanvas = F)) %>%
+      leaflet::addProviderTiles(leaflet::providers$CartoDB.PositronNoLabels) %>%
+      leaflet::fitBounds(min(trends_df$lon), min(trends_df$lat),
+                         max(trends_df$lon), max(trends_df$lat))
+    
+    for (id in sort(unique(trends_chunked$chunk_id))) {
+      map <- add_chunk(map, dplyr::filter(trends_chunked, chunk_id == id), PerCol_gridded)
+    }
+    
+    map <- map %>%
+      leaflet::addCircleMarkers(data = sig_df,
+                                lng = ~lon, lat = ~lat,
+                                fillColor   = ~PerCol_gridded_sig(Bin),
+                                fillOpacity = 1,
+                                color = "black",
+                                weight      = 1,            
+                                radius      = 1.5,
+                                stroke      = T) %>%
+      leaflet::addScaleBar(position = "bottomright")
     
     #Add NWT border if desired
     if (NWT_border == T){
@@ -604,18 +657,20 @@ if(comparemanual == TRUE){
     
     map = map %>%
       leaflet::addCircleMarkers(data = MT, 
-                                fillColor = ~PerCol(MT$Bin), #
+                                fillColor = ~PerCol(Bin), #
                                 fillOpacity = ifelse(MT$Significance == "yes", 1, 1),
                                 label = MT$Site_name,
                                 radius = 10,
                                 weight = ifelse(MT$Significance == "yes", 2, 2),
                                 color = "black",
                                 popup =~ paste0("Site name: ", MT$Site_name, "<br>",
-                                                "Years of data between ", paste(start_year), "-", paste(end_year), ": ", MT$`Years of Record`, "<br>",
+                                                "Years of data between ", paste(start_year), "-", paste(end_year), ": ", MT$Years.of.Record, "<br>",
                                                 "Magnitude of change: ", round(MT$Magnitude, 2), " mm SWE/decade", "<br>",
                                                 "p value: ", MT$p.value, "<br>",
                                                 "Method: ", MT$Method, "<br>",
                                                 "Elevation: ", MT$elevation)) #%>%
+      
+     #Legend commented out for recreation in CorelDraw
       # leaflet::addLegend(
       #   position = "bottomleft",
       #   pal = PerCol,
@@ -625,34 +680,126 @@ if(comparemanual == TRUE){
     
     
     
-  }
+  
   
   
   map
-  
-  return(list(
-    map = map,
-    autocorr_summary = autocorr_summary,
-    autocorr_stats = autocorr_stats
-  ))
   
   if(save == T){
     Sys.setenv(PATH = paste0(user, "/Documents/Modelling/phantomjs/phantomjs/bin"))
     htmlwidgets::saveWidget(map, file = paste0(savepath, "/swemap.html"), selfcontained = TRUE)
     webshot::webshot(paste0(savepath, "/swemap.html"), 
                      paste0(savepath, "/swemap_", ".png"), 
-                     delay = 5, vwidth = 1000, vheight = 1000, zoom = 3)
+                     delay = 8, vwidth = 1000, vheight = 1050, zoom = 3)
   }
   
 
-# Create snow site map with light blue markers
+# Create snow site map - Figure 1
 map <- leaflet::leaflet() %>%
-  # leaflet::addProviderTiles(leaflet::providers$OpenStreetMap.Mapnik, group = "Open Street Map") %>% 
-  # leaflet::addProviderTiles(leaflet::providers$Esri.WorldImagery, group = "ESRI Aerial") %>% 
-  leaflet::addProviderTiles(leaflet::providers$CartoDB.PositronNoLabels, group = "CartoDB")  #%>%
-# leaflet::addLayersControl(
-#   baseGroups = c("CartoDB", "Open Street Map", "ESRI Aerial"),
-#   options = leaflet::layersControlOptions(collapsed = T))
+  leaflet::addProviderTiles(leaflet::providers$CartoDB.PositronNoLabels)
+
+#Add basin outlines 
+
+#bring in other basin shapefiles
+
+#Yellowknife river basin
+YK <- sf::st_read(paste0(user, "/Documents/R_Scripts/Packages/snow/data/Shapefiles/07SB002_DrainageBasin_BassinDeDrainage.shp"),
+                  layer = "07SB002_DrainageBasin_BassinDeDrainage")
+YK <- sf::st_transform(YK, proj) # Change the projection
+YK <- sf::st_zm(YK)
+
+#Snare river basin
+
+Snare <- sf::st_read(paste0(user, "/Documents/R_Scripts/Packages/snow/data/Shapefiles/07SA003_DrainageBasin_BassinDeDrainage.shp"),
+                     layer = "07SA003_DrainageBasin_BassinDeDrainage")
+Snare <- sf::st_transform(Snare, proj) # Change the projection
+Snare <- sf::st_zm(Snare)
+
+#Taltson
+
+Taltson <- sf::st_read(paste0(user, "/Documents/R_Scripts/Packages/snow/data/Shapefiles/07QA001_DrainageBasin_BassinDeDrainage.shp"),
+                       layer = "07QA001_DrainageBasin_BassinDeDrainage")
+Taltson <- sf::st_transform(Taltson, proj) # Change the projection
+Taltson <- sf::st_zm(Taltson)
+
+#Peace
+
+Peace <- sf::st_read(paste0(user, "/Documents/R_Scripts/Packages/snow/data/Shapefiles/07KC005_DrainageBasin_BassinDeDrainage.shp"),
+                     layer = "07KC005_DrainageBasin_BassinDeDrainage")
+Peace <- sf::st_transform(Peace, proj) # Change the projection
+Peace <- sf::st_zm(Peace)
+Peace <- sf::st_make_valid(Peace)
+
+#Athabasca 
+
+AB <- sf::st_read(paste0(user, "/Documents/R_Scripts/Packages/snow/data/Shapefiles/07DD010_DrainageBasin_BassinDeDrainage.shp"),
+                  layer = "07DD010_DrainageBasin_BassinDeDrainage")
+AB <- sf::st_transform(AB, proj) # Change the projection
+AB <- sf::st_zm(AB)
+AB <- sf::st_make_valid(AB)
+
+#Liard
+
+Liard <- sf::st_read(paste0(user, "/Documents/R_Scripts/Packages/snow/data/Shapefiles/10ED002_DrainageBasin_BassinDeDrainage.shp"),
+                     layer = "10ED002_DrainageBasin_BassinDeDrainage")
+Liard <- sf::st_transform(Liard, proj) # Change the projection
+Liard <- sf::st_zm(Liard)
+
+#Peel
+
+Peel <- sf::st_read(paste0(user, "/Documents/R_Scripts/Packages/snow/data/Shapefiles/10MC022_DrainageBasin_BassinDeDrainage.shp"),
+                    layer = "10MC022_DrainageBasin_BassinDeDrainage")
+Peel <- sf::st_transform(Peel, proj) # Change the projection
+Peel <- sf::st_zm(Peel)
+
+#Hay
+
+Hay <- sf::st_read(paste0(user, "/Documents/R_Scripts/Packages/snow/data/Shapefiles/07OB001_DrainageBasin_BassinDeDrainage.shp"),
+                   layer = "07OB001_DrainageBasin_BassinDeDrainage")
+Hay <- sf::st_transform(Hay, proj) # Change the projection
+Hay <- sf::st_zm(Hay)
+
+#Lower Slave
+
+lower_slave <- sf::st_read(paste0(user, "/Documents/R_Scripts/Packages/snow/data/Shapefiles/lower_slave_clean.shp"),
+                   layer = "lower_slave_clean")
+lower_slave <- sf::st_transform(lower_slave, proj) # Change the projection
+lower_slave <- sf::st_zm(lower_slave)
+
+
+#MT <- read.csv(paste0(user, "/Documents/R_Scripts/Packages/snow/data/MRB_snowsurvey_trends.csv"))
+# MT <- read.csv(paste0(user, "/Documents/R_Scripts/Packages/snow/data/pts_basin.csv")) %>%
+#   dplyr::rename("Latitude"="MT_Latitude",
+#                 "Longitude"="MT_Longitude")
+
+map = map %>%
+  leaflet::addPolygons(data = Hay,
+                       color = "darkgrey",
+                       fillColor = "lightgrey" ) %>%
+  leaflet::addPolygons(data = Snare,
+                       color = "darkgrey",
+                       fillColor = "lightgrey") %>%
+  leaflet::addPolygons(data = YK,
+                       color = "darkgrey",
+                       fillColor = "lightgrey") %>%
+  leaflet::addPolygons(data = lower_slave,
+                       color = "darkgrey",
+                       fillColor = "lightgrey") %>%
+  leaflet::addPolygons(data = Peel, 
+                       color = "darkgrey",
+                       fillColor = "lightgrey") %>%
+  leaflet::addPolygons(data = Liard, 
+                       color = "darkgrey",
+                       fillColor = "lightgrey") %>%
+  leaflet::addPolygons(data = AB, 
+                       color = "darkgrey",
+                       fillColor = "lightgrey") %>%
+  leaflet::addPolygons(data = Peace, 
+                       color = "darkgrey",
+                       fillColor = "lightgrey") %>%
+  leaflet::addPolygons(data = Taltson, 
+                       color = "darkgrey",
+                       fillColor = "lightgrey")
 
 #Add NWT border if desired
 if (NWT_border == T){
@@ -672,22 +819,46 @@ if(Mack_basin_outline == T) {
     leaflet::addPolygons(data = Mack, color = "black", weight = 2, opacity = 1, fillOpacity = 0, group = "NWT Border", stroke = T)
 }
 
-#MT <- read.csv(paste0(user, "/Documents/R_Scripts/Packages/snow/data/MRB_snowsurvey_trends.csv"))
+#Add colouring for basins - same as ggplot Figure 3
+basin_cols <- c(
+  "Athabasca"      = "#F8766D", 
+  "Great Slave Lake - other"    = "#D89000",  
+  "Hay"            = "#B79F00",  
+  "Liard"          = "#7CAE00",  
+  "Lower Slave"    = "#00BA38", 
+  "Mackenzie River main stem"= "#00BFC4",  
+  "Peace"          = "#00C1DE",  
+  "Peel"           = "#00B0F6",  
+  "Snare"          = "#9590FF",  
+  "Taltson"        = "#E76BF3", 
+  "Yellowknife"    = "#FF61C3"   
+)
+
+pal_basin <- leaflet::colorFactor(
+  palette  = basin_cols,
+  domain   = names(basin_cols),
+  na.color = "#BDBDBD"
+)
 
 map = map %>%
   leaflet::addCircleMarkers(data = MT, 
-                            fillColor = "lightblue", #
+                            fillColor = ~pal_basin(basin), #
+                            lat = MT$Latitude,
+                            lng = MT$Longitude,
                             fillOpacity = ifelse(MT$Significance == "yes", 1, 1),
                             label = MT$Site_name,
                             radius = 7,
                             weight = ifelse(MT$Significance == "yes", 1, 1),
                             color = "black",
                             popup =~ paste0("Site name: ", MT$Site_name, "<br>",
-                                            "Years of data between ", paste(start_year), "-", paste(end_year), ": ", MT$`Years of Record`, "<br>",
+                                            "Years of data between ", paste(start_year), "-", paste(end_year), ": ", MT$Years.of.Record, "<br>",
                                             "Magnitude of change: ", round(MT$Magnitude, 2), " mm SWE/decade", "<br>",
                                             "p value: ", MT$p.value, "<br>",
                                             "Method: ", MT$Method, "<br>",
-                                            "Elevation: ", MT$elevation))
+                                            "Latitude: ", MT$Latitude, "<br>",
+                                            "Longitude: ", MT$Longitude, "<br>",
+                                            "Elevation: ", MT$elevation)) %>%
+  leaflet::addScaleBar(position = "bottomright")
 
 map 
 
@@ -698,5 +869,6 @@ if(save == T){
                    paste0(savepath, "/swesitemap_", ".png"), 
                    delay = 5, vwidth = 1000, vheight = 1000, zoom = 3)
 }
+
 
 ##################################################################################################

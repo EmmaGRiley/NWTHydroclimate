@@ -1,8 +1,10 @@
 #extra depths adjustments - using extra depths to multiply density. 
 #This is attempting to correct for greater variation in snow cover properties above treeline.
 
+user <- paste0("C:/Users/", tolower(Sys.getenv("USERNAME")))
+
 #bring in ss data (as GNWT employee)
-source(paste0(user, "Documents/R_Scripts/Packages/snow/R/R_oracle_connect.R"))
+source(paste0(user, "/Documents/R_Scripts/Packages/snow/R/R_oracle_connect.R"))
 
 # for non-GNWT users, download data (point_data.csv and sites.csv) from https://doi.org/10.46887/2025-005
 # or use data from the /data folder of this package
@@ -10,7 +12,7 @@ md_3 <- readRDS(paste0(user,"/Documents/R_Scripts/Packages/snow/data/md_3.rds"))
 sites <- readRDS(paste0(user,"/Documents/R_Scripts/Packages/snow/data/sites.rds"))
 depths <- readRDS(paste0(user,"/Documents/R_Scripts/Packages/snow/data/depths.rds"))
 
-sites_treeline <- c("Christison Lake", "Big Lake", " White Wolf Lake", "Winter Lake", "Nonacho Lake", "Gray Lake", "Dymond Lake")
+sites_treeline <- c("Christison Lake", "Big Lake", "White Wolf Lake", "Winter Lake", "Nonacho Lake", "Gray Lake", "Dymond Lake")
 
 treeline_sites <- md_3 %>%
   dplyr::filter(site %in% sites_treeline,
@@ -53,6 +55,7 @@ for(i in sites_treeline) {
       dplyr::filter(date_time == current_date)
     
     # Calculate mean density for this date
+    # mean_density is dimensionless (SWE / depth), i.e. rho_s / rho_w
     mean_density <- mean(date_data$density, na.rm = TRUE)
     
     # Calculate mean of all extra depths for this date

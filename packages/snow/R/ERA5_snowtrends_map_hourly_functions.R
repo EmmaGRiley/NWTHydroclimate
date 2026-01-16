@@ -405,7 +405,7 @@ serial_autocorr_test <- function(data, start_year, end_year, flags, hdensity, ld
 #' @return Data frame with autocorrelation test results (same structure as
 #'   serial_autocorr_test)
 #' @export
-serial_autocorr_test_canswe <- function(data, start_year, end_year, only_autocorrelated = FALSE) {
+serial_autocorr_test_canswe <- function(data, start_year, end_year, min_year, only_autocorrelated = FALSE) {
   
   #filter data
   data <- data %>%
@@ -511,4 +511,430 @@ p.value.function <- function(significance, mk.value){
 #' @export
 sen <- function(..., weights = NULL) {
   mblm::mblm(...)
+}
+
+# =============================================================================
+# Reusable functions for plotting ERA5 vs manual snow survey relationships 
+# splitting up relationships based on basins 
+# prep -> spatial join -> strict nearest fill -> metrics
+# -> per-group stats -> standard plots and boxplots
+# Always uses explicit namespaces (dplyr::, sf::, etc.)
+# =============================================================================
+
+# -----------------------------
+# 0) Small helpers
+# -----------------------------
+fmt_p <- function(p) {
+  if (is.na(p)) {
+    "NA"
+  } else if (p < 0.01) {
+    "< 0.01"
+  } else {
+    paste0("= ", signif(p, 2))
+  }
+}
+
+# pick x/y columns based on normalized vs raw
+get_xy_cols <- function(normalized = TRUE) {
+  if (isTRUE(normalized)) {
+    list(x = "NormSen_slope", y = "NormMagnitude")
+  } else {
+    list(x = "Sen_slope", y = "Magnitude")
+  }
+}
+
+# -----------------------------
+# 1) Read + prep comparison table
+# -----------------------------
+prep_comparison_table <- function(
+    csv_path,
+    sen_scale = 10000,
+    era5_mm_mult = 1000,
+    manual_mm_mult = 10,
+    drop_col = "X"
+) {
+  dt <- utils::read.csv(csv_path, stringsAsFactors = FALSE)
+  
+  dt <- dplyr::distinct(dt) %>%
+    dplyr::mutate(
+      Sen_slope      = .data$Sen_slope * sen_scale,
+      ERA5_meanmax_mm   = .data$meanmaxswe * era5_mm_mult,
+      Manual_meanmax_mm = .data$sitemeanswe * manual_mm_mult,
+      NormSen_slope   = (.data$Sen_slope / .data$ERA5_meanmax_mm) * 100,
+      NormMagnitude   = (.data$Magnitude / .data$Manual_meanmax_mm) * 100
+    )
+  
+  if (!is.null(drop_col) && drop_col %in% names(dt)) {
+    dt <- dplyr::select(dt, -dplyr::all_of(drop_col))
+  }
+  
+  dt
+}
+
+# -----------------------------
+# 2) Make sf points from a table
+# -----------------------------
+as_points_sf <- function(dt, lon_col = "Longitude", lat_col = "Latitude", crs) {
+  sf::st_as_sf(
+    dt,
+    coords = c(lon_col, lat_col),
+    crs = crs,
+    remove = FALSE
+  )
+}
+
+# -----------------------------
+# 3) Attach a region label (ecozone/ecoregion/ecoprovince/basin) via polygon join
+#    with strict nearest fill only within max_km for missing points
+# -----------------------------
+attach_region <- function(
+    pts_sf,
+    regions_sf,
+    region_name_col,   # e.g. "ECOZONE_NA", "ECOREGION1", "ECOPROVI_1", "basin"
+    max_km = 50,
+    region_out_col = "region"
+) {
+  # ensure CRS match
+  if (sf::st_crs(pts_sf) != sf::st_crs(regions_sf)) {
+    pts_sf <- sf::st_transform(pts_sf, sf::st_crs(regions_sf))
+  }
+  
+  # keep only name + geometry from regions
+  regions_sf <- regions_sf %>%
+    dplyr::select(dplyr::all_of(region_name_col)) %>%
+    dplyr::rename(!!region_out_col := dplyr::all_of(region_name_col)) %>%
+    sf::st_make_valid() %>%
+    sf::st_zm(drop = TRUE, what = "ZM")
+  
+  # within join
+  joined <- sf::st_join(pts_sf, regions_sf, join = sf::st_within, left = TRUE)
+  
+  # strict nearest for missing, only if within max_km
+  missing <- is.na(joined[[region_out_col]])
+  
+  joined$dist_to_region_m <- NA_real_
+  
+  if (any(missing)) {
+    pts_miss <- joined[missing, , drop = FALSE]
+    
+    nn <- sf::st_nearest_feature(pts_miss, regions_sf)
+    d  <- sf::st_distance(pts_miss, regions_sf[nn, ], by_element = TRUE)
+    
+    ok <- as.numeric(d) <= (max_km * 1000)
+    
+    joined[[region_out_col]][missing] <- ifelse(
+      ok,
+      regions_sf[[region_out_col]][nn],
+      NA_character_
+    )
+    
+    joined$dist_to_region_m[missing] <- as.numeric(d)
+  }
+  
+  joined
+}
+
+# -----------------------------
+# 4) Add error metrics (raw + normalized)
+# -----------------------------
+add_error_metrics <- function(dt_or_sf) {
+  dt_or_sf %>%
+    dplyr::mutate(
+      abs_err      = abs(.data$Sen_slope - .data$Magnitude),
+      abs_err_norm = abs(.data$NormSen_slope - .data$NormMagnitude)
+    )
+}
+
+# -----------------------------
+# 5) Filter to groups with >= n_min observations (or distinct sites if provided)
+# -----------------------------
+filter_min_group_n <- function(
+    dt,
+    group_col,
+    n_min = 3,
+    distinct_id_col = NULL
+) {
+  g <- rlang::sym(group_col)
+  
+  if (is.null(distinct_id_col)) {
+    dt %>%
+      dplyr::group_by(!!g) %>%
+      dplyr::filter(dplyr::n() >= n_min) %>%
+      dplyr::ungroup()
+  } else {
+    id <- rlang::sym(distinct_id_col)
+    dt %>%
+      dplyr::group_by(!!g) %>%
+      dplyr::filter(dplyr::n_distinct(!!id) >= n_min) %>%
+      dplyr::ungroup()
+  }
+}
+
+# -----------------------------
+# 6) Per-group regression + correlation stats
+#    Returns: n, slope, slope_p, r2, spearman_rho, spearman_p
+# -----------------------------
+group_stats <- function(
+    dt,
+    group_col,
+    x_col,
+    y_col,
+    n_min = 3
+) {
+  g <- rlang::sym(group_col)
+  x <- rlang::sym(x_col)
+  y <- rlang::sym(y_col)
+  
+  dt %>%
+    dplyr::filter(!is.na(!!g), !is.na(!!x), !is.na(!!y)) %>%
+    dplyr::group_by(!!g) %>%
+    dplyr::filter(dplyr::n() >= n_min) %>%
+    dplyr::group_modify(function(.x, .y) {
+      fit <- stats::lm(stats::as.formula(paste0(y_col, " ~ ", x_col)), data = .x)
+      
+      slope_row <- broom::tidy(fit) %>%
+        dplyr::filter(.data$term == x_col)
+      
+      gl <- broom::glance(fit)
+      
+      ct <- stats::cor.test(.x[[x_col]], .x[[y_col]], method = "spearman")
+      
+      dplyr::tibble(
+        n             = nrow(.x),
+        slope         = slope_row$estimate,
+        slope_p_value = slope_row$p.value,
+        r2            = gl$r.squared,
+        rho_spearman  = unname(ct$estimate),
+        rho_p_value   = ct$p.value
+      )
+    }) %>%
+    dplyr::ungroup() %>%
+    dplyr::arrange(dplyr::desc(.data$n))
+}
+
+# -----------------------------
+# 7) Scatter with separate regression per group (and 1:1 line)
+# -----------------------------
+plot_scatter_by_group <- function(
+    dt,
+    group_col,
+    normalized = TRUE,
+    shared_limits = NULL,
+    xlab = NULL,
+    ylab = NULL,
+    se = FALSE
+) {
+  xy <- get_xy_cols(normalized = normalized)
+  
+  if (is.null(shared_limits)) {
+    shared_limits <- range(c(dt[[xy$x]], dt[[xy$y]]), na.rm = TRUE)
+  }
+  
+  if (is.null(xlab)) {
+    xlab <- if (normalized) "% change in ERA5-Land SWE/decade" else "ERA5 trend (Sen's slope)"
+  }
+  if (is.null(ylab)) {
+    ylab <- if (normalized) "% change in manual SWE/decade" else "Manual trend (Magnitude)"
+  }
+  
+  ggplot2::ggplot(
+    dt,
+    ggplot2::aes(
+      x = .data[[xy$x]],
+      y = .data[[xy$y]]
+    )
+  ) +
+    ggplot2::geom_smooth(
+      ggplot2::aes(color = .data[[group_col]]),
+      method = "lm",
+      se = se,
+      linewidth = 1,
+      alpha = 0.25
+    ) +
+    ggplot2::geom_point(
+      ggplot2::aes(fill = .data[[group_col]]),
+      size = 6,
+      shape = 21,
+      color = "black",
+      stroke = 1,
+      alpha = 0.9
+    ) +
+    ggplot2::geom_abline(
+      slope = 1, intercept = 0,
+      linetype = "dotted",
+      color = "black",
+      linewidth = 1
+    ) +
+    ggplot2::scale_x_continuous(limits = shared_limits) +
+    ggplot2::scale_y_continuous(limits = shared_limits) +
+    ggplot2::labs(x = xlab, y = ylab, fill = NULL, color = NULL) +
+    ggplot2::theme_classic() +
+    ggplot2::theme(
+      panel.border = ggplot2::element_rect(fill = NA, linewidth = 1, color = "black"),
+      axis.text  = ggplot2::element_text(size = 14),
+      axis.title = ggplot2::element_text(size = 18)
+    )
+}
+
+# -----------------------------
+# 8) Boxplots for mean SWE (mm), trends, and error metrics
+# -----------------------------
+make_long_for_boxplots <- function(
+    dt,
+    group_col,
+    normalized = TRUE
+) {
+  xy <- get_xy_cols(normalized = normalized)
+  
+  # error variable depends on normalized
+  err_col <- if (normalized) "abs_err_norm" else "abs_err"
+  
+  # SWE and trend in a long format for boxplots
+  swe_long <- dt %>%
+    dplyr::select(
+      dplyr::all_of(group_col),
+      .data$ERA5_meanmax_mm,
+      .data$Manual_meanmax_mm
+    ) %>%
+    tidyr::pivot_longer(
+      cols = c("ERA5_meanmax_mm", "Manual_meanmax_mm"),
+      names_to = "source",
+      values_to = "meanmax_swe_mm"
+    ) %>%
+    dplyr::mutate(
+      source = dplyr::recode(
+        .data$source,
+        ERA5_meanmax_mm   = "ERA5-Land",
+        Manual_meanmax_mm = "Manual surveys"
+      )
+    )
+  
+  trend_long <- dt %>%
+    dplyr::select(
+      dplyr::all_of(group_col),
+      dplyr::all_of(xy$x),
+      dplyr::all_of(xy$y)
+    ) %>%
+    tidyr::pivot_longer(
+      cols = c(dplyr::all_of(xy$x), dplyr::all_of(xy$y)),
+      names_to = "series",
+      values_to = "trend"
+    ) %>%
+    dplyr::mutate(
+      source = dplyr::if_else(.data$series == xy$x, "ERA5-Land", "Manual surveys")
+    ) %>%
+    dplyr::select(dplyr::all_of(group_col), .data$source, .data$trend)
+  
+  err_long <- dt %>%
+    dplyr::select(dplyr::all_of(group_col), dplyr::all_of(err_col)) %>%
+    dplyr::rename(abs_error = dplyr::all_of(err_col))
+  
+  list(swe_long = swe_long, trend_long = trend_long, err_long = err_long)
+}
+
+plot_box_swe <- function(swe_long, group_col) {
+  ggplot2::ggplot(
+    swe_long,
+    ggplot2::aes(x = .data[[group_col]], y = .data$meanmax_swe_mm, fill = .data$source)
+  ) +
+    ggplot2::geom_boxplot(outlier.alpha = 0.3) +
+    ggplot2::theme_classic() +
+    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1)) +
+    ggplot2::labs(x = NULL, y = "Mean end-of-season SWE (mm)", fill = NULL)
+}
+
+plot_box_trend <- function(trend_long, group_col, normalized = TRUE) {
+  ylab <- if (normalized) "Trend (%/decade)" else "Trend (original units)"
+  ggplot2::ggplot(
+    trend_long,
+    ggplot2::aes(x = .data[[group_col]], y = .data$trend, fill = .data$source)
+  ) +
+    ggplot2::geom_boxplot(outlier.alpha = 0.3) +
+    ggplot2::theme_classic() +
+    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1)) +
+    ggplot2::labs(x = NULL, y = ylab, fill = NULL)
+}
+
+plot_box_error <- function(err_long, group_col, normalized = TRUE) {
+  ylab <- if (normalized) "|% ERA5-L slope − % Manual SS slope|" else "|ERA5-L slope − Manual SS slope|"
+  ggplot2::ggplot(
+    err_long,
+    ggplot2::aes(x = .data[[group_col]], y = .data$abs_error)
+  ) +
+    ggplot2::geom_boxplot(outlier.alpha = 0) +
+    ggplot2::geom_jitter() +
+    ggplot2::theme_classic() +
+    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1)) +
+    ggplot2::labs(x = NULL, y = ylab)
+
+}
+
+# -----------------------------
+# 9) Means table for SWE / trends / error (by group and source)
+# -----------------------------
+summarize_means <- function(
+    swe_long,
+    trend_long,
+    err_long,
+    group_col
+) {
+  means_swe <- swe_long %>%
+    dplyr::group_by(.data[[group_col]], .data$source) %>%
+    dplyr::summarise(
+      n = sum(!is.na(.data$meanmax_swe_mm)),
+      mean_meanmax_swe_mm = mean(.data$meanmax_swe_mm, na.rm = TRUE),
+      .groups = "drop"
+    )
+  
+  means_trend <- trend_long %>%
+    dplyr::group_by(.data[[group_col]], .data$source) %>%
+    dplyr::summarise(
+      n = sum(!is.na(.data$trend)),
+      mean_trend = mean(.data$trend, na.rm = TRUE),
+      .groups = "drop"
+    )
+  
+  means_error <- err_long %>%
+    dplyr::group_by(.data[[group_col]]) %>%
+    dplyr::summarise(
+      n = sum(!is.na(.data$abs_error)),
+      mean_abs_error = mean(.data$abs_error, na.rm = TRUE),
+      .groups = "drop"
+    )
+  
+  list(means_swe = means_swe, means_trend = means_trend, means_error = means_error)
+}
+
+# -----------------------------
+# 10) Define a function to calculate the Haversine distance (for closest lat/long match)
+# -----------------------------
+
+haversine_dist <- function(lat1, lon1, lat2, lon2) {
+  R <- 6371 # Earth radius in kilometers
+  delta_lat <- (lat2 - lat1) * pi / 180
+  delta_lon <- (lon2 - lon1) * pi / 180
+  a <- sin(delta_lat / 2)^2 + cos(lat1 * pi / 180) * cos(lat2 * pi / 180) * sin(delta_lon / 2)^2
+  c <- 2 * atan2(sqrt(a), sqrt(1 - a))
+  R * c # Distance in km
+}
+
+
+# -----------------------------
+# 11) Create a multi basin polygon for basin-averaging
+# -----------------------------
+
+as_basin_sf <- function(x, name) {
+  # If x is geometry-only (sfc), wrap it
+  if (inherits(x, "sfc")) {
+    x <- sf::st_sf(basin = name, geometry = x)
+  } else {
+    x <- x %>% dplyr::mutate(basin = name)
+  }
+  
+  x %>%
+    sf::st_zm(drop = TRUE, what = "ZM") %>%
+    sf::st_make_valid() %>%
+    sf::st_collection_extract("POLYGON") %>%
+    sf::st_cast("MULTIPOLYGON") %>%
+    dplyr::select(basin, geometry)
 }
