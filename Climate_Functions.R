@@ -453,7 +453,7 @@ hydro_map_basin(
   select_year = 2025,
   water_year_start = 10,
   water_year = F,
-  end_date = Sys.Date(),
+  end_date = "2025-09-30",
   plot_legend = T,
   adjust_manual_cum_precip = T, #change this to true if you are manually adjusting precip values based on gapfilling from FTS stns
   phantomjspath = paste0(user, "Modelling/Phantomjs/phantomjs/bin") #get phantomjs executable and save in similar directory
