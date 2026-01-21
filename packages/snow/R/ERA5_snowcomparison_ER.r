@@ -12,6 +12,8 @@ library(tidyr)
 
 #specify user
 user <- paste0("C:/Users/", tolower(Sys.getenv("USERNAME")))
+user      <- file.path("/Users/emmariley")
+
 
 # Define `%>%` operator in current environment
 `%>%` <- magrittr::`%>%`
@@ -123,148 +125,6 @@ shared_limits <- range(
   c(Data_table$NormSen_slope, Data_table$NormMagnitude),
   na.rm = TRUE
 )
-
-# -----------------------------
-# Correlation labels
-# -----------------------------
-corr_all <- stats::cor.test(
-  Data_table$NormSen_slope,
-  Data_table$NormMagnitude,
-  method = "spearman"
-)
-
-corr_nwt <- stats::cor.test(
-  Data_table$NormSen_slope[Data_table$group == "NWT"],
-  Data_table$NormMagnitude[Data_table$group == "NWT"],
-  method = "spearman"
-)
-
-fmt_p <- function(p) {
-  if (is.na(p)) {
-    "NA"
-  } else if (p < 0.01) {
-    "< 0.01"
-  } else {
-    paste0("= ", signif(p, 2))
-  }
-}
-
-label_all <- paste0(
-  "All sites: Spearman's \u03c1 = ",
-  round(corr_all$estimate, 2),
-  ", p ",
-  fmt_p(corr_all$p.value)
-)
-
-label_nwt <- paste0(
-  "NWT sites: Spearman's \u03c1 = ",
-  round(corr_nwt$estimate, 2),
-  ", p ",
-  fmt_p(corr_nwt$p.value)
-)
-
-# Dynamic label placement
-x_lab <- shared_limits[1] + 0.03 * diff(shared_limits)
-y_top <- shared_limits[2] - 0.03 * diff(shared_limits)
-y_2   <- shared_limits[2] - 0.10 * diff(shared_limits)
-
-# # -----------------------------
-# # Combined plot
-# # -----------------------------
-# plot_combined <- ggplot2::ggplot(
-#   Data_table,
-#   ggplot2::aes(x = NormSen_slope, y = NormMagnitude)
-# ) +
-#   
-#   # Background: all sites
-#   ggplot2::geom_smooth(
-#     data = Data_table,
-#     method = "lm",
-#     se = TRUE,
-#     color = "black",
-#     fill = "lightgrey",
-#     alpha = 0.6,
-#     linewidth = 1
-#   ) +
-#   ggplot2::geom_point(
-#     data = dplyr::filter(Data_table, group != "NWT"),
-#     size = 6,
-#     shape = 21,
-#     color = "black",
-#     fill = NA,
-#     stroke = 1,
-#     alpha = 0.6
-#   ) +
-#   
-#   # Foreground: NWT only
-#   ggplot2::geom_smooth(
-#     data = dplyr::filter(Data_table, group == "NWT"),
-#     ggplot2::aes(color = group, fill = group),
-#     method = "lm",
-#     se = TRUE,
-#     linewidth = 1.2,
-#     alpha = 0.25
-#   ) +
-#   ggplot2::geom_point(
-#     data = dplyr::filter(Data_table, group == "NWT"),
-#     ggplot2::aes(fill = group),
-#     size = 7,
-#     shape = 21,
-#     color = "black",
-#     stroke = 1,
-#     alpha = 0.95
-#   ) +
-#   
-#   # 1:1 reference line
-#   ggplot2::geom_abline(
-#     slope = 1,
-#     intercept = 0,
-#     linetype = "dotted",
-#     color = "black",
-#     linewidth = 1
-#   ) +
-#   
-#   # Correlation annotations
-#   ggplot2::annotate(
-#     "text",
-#     x = x_lab,
-#     y = y_top,
-#     label = label_all,
-#     hjust = 0,
-#     vjust = 1,
-#     size = 5.5,
-#     color = "black"
-#   ) +
-#   ggplot2::annotate(
-#     "text",
-#     x = x_lab,
-#     y = y_2,
-#     label = label_nwt,
-#     hjust = 0,
-#     vjust = 1,
-#     size = 5.5,
-#     color = "black"
-#   ) +
-#   
-#   # Axes and theme
-#   ggplot2::scale_x_continuous(limits = shared_limits) +
-#   ggplot2::scale_y_continuous(limits = shared_limits) +
-#   ggplot2::labs(
-#     title = "",
-#     x = "% change in ERA5-Land SWE/decade",
-#     y = "% change in manual snow survey SWE/decade",
-#     color = NULL,
-#     fill  = NULL
-#   ) +
-#   ggplot2::theme_classic() +
-#   ggplot2::theme(
-#     panel.border = ggplot2::element_rect(fill = NA, linewidth = 1, color = "black"),
-#     axis.text  = ggplot2::element_text(size = 14),
-#     axis.title = ggplot2::element_text(size = 18),
-#     legend.position = "none"
-#   )
-# 
-# plot_combined
 
 #summarize stats by basin 
 #bring in other basin shapefiles
@@ -397,20 +257,13 @@ sf::st_write(
   delete_dsn = TRUE
 )
 
+lower_slave_clean <- sf::st_read(paste0(user, "/Documents/R_Scripts/Packages/snow/data/Shapefiles/lower_slave_clean.shp"),
+                                 layer = "lower_slave_clean")
+
 # transform for leaflet
 
 delta_ll <- sf::st_transform(delta2, proj)
 lower_ll <- sf::st_transform(lower_slave_clean, proj)
-
-#check shapefile
-
-# map <- leaflet::leaflet() %>%
-#   leaflet::addProviderTiles(leaflet::providers$CartoDB.PositronNoLabels, group = "CartoDB") 
-# map <- map  %>%
-#   leaflet::addPolygons(data = delta_ll, color = "black", weight = 1, opacity = 0.7, fillOpacity = 1)
-# map <- map  %>%
-#   leaflet::addPolygons(data = lower_ll, color = "orange", weight = 1, opacity = 0.7, fillOpacity = 1)
-# map
 
 #Assign each lat/long pair in Data_table to basin
 pts <- sf::st_as_sf(
@@ -478,150 +331,6 @@ MRBsites <- c("Tulita", "NORMAN WELLS A", "Norman Wells", "Fort Good Hope", "Car
 GSL_othsites <- c("Nyarling River", "Kakisa River", "Pine Point", "Thubun Lake")
 pts_basin$basin <- ifelse(is.na(pts_basin$basin == T)&pts_basin$Site_name %in%MRBsites, "Mackenzie River main stem", pts_basin$basin)
 pts_basin$basin <- ifelse(is.na(pts_basin$basin == T)&pts_basin$Site_name %in%GSL_othsites, "Great Slave Lake - other", pts_basin$basin)
-
-# # -----------------------------
-# # Leaflet visual QA for "missing -> nearest basin" assignments
-# # -----------------------------
-# # Always map in EPSG:4326 for leaflet
-# basins_ll <- sf::st_transform(basins_sf, 4326)
-# pts_ll    <- sf::st_transform(pts_basin, 4326)
-# 
-# # Three point sets:
-# pts_miss_all  <- pts_ll[pts_ll$was_missing, , drop = FALSE]
-# pts_miss_ok   <- pts_ll[pts_ll$was_missing & pts_ll$assigned_nearest, , drop = FALSE]
-# pts_miss_fail <- pts_ll[pts_ll$was_missing & !pts_ll$assigned_nearest, , drop = FALSE]
-# 
-# # Lines from missing points to their nearest basin (only for those that had a nearest feature index)
-# make_link_lines <- function(pts_sf, basins_sf_ll) {
-#   if (nrow(pts_sf) == 0) return(NULL)
-#   idx <- pts_sf$nn_basin_i
-#   keep <- !is.na(idx)
-#   if (!any(keep)) return(NULL)
-#   
-#   pts_keep <- pts_sf[keep, , drop = FALSE]
-#   idx_keep <- idx[keep]
-#   
-#   p_xy <- sf::st_coordinates(pts_keep)
-#   b_xy <- sf::st_coordinates(sf::st_centroid(basins_sf_ll[idx_keep, ]))
-#   
-#   ln <- lapply(seq_len(nrow(p_xy)), function(i) {
-#     sf::st_linestring(rbind(p_xy[i, ], b_xy[i, ]))
-#   })
-#   
-#   sf::st_sf(
-#     status = pts_keep$assigned_nearest,
-#     dist_km = round(pts_keep$dist_to_basin_m / 1000, 1),
-#     nearest_basin = basins_sf_ll$basin[idx_keep],
-#     geometry = sf::st_sfc(ln, crs = 4326)
-#   )
-# }
-# 
-# link_lines <- make_link_lines(pts_miss_all, basins_ll)
-# 
-# # Build the map
-# m_check <- leaflet::leaflet() %>%
-#   leaflet::addProviderTiles(leaflet::providers$CartoDB.PositronNoLabels) %>%
-#   leaflet::addPolygons(
-#     data = basins_ll,
-#     color = "black",
-#     weight = 1,
-#     fillOpacity = 0.05,
-#     label = ~basin,
-#     group = "Basins"
-#   )
-# 
-# # Optional: draw “link” lines (helps see which basin was chosen)
-# if (!is.null(link_lines) && nrow(link_lines) > 0) {
-#   m_check <- m_check %>%
-#     leaflet::addPolylines(
-#       data = link_lines,
-#       color = "grey40",
-#       weight = 1,
-#       opacity = 0.7,
-#       dashArray = "4,4",
-#       popup = ~paste0(
-#         "Nearest basin: ", nearest_basin, "<br>",
-#         "Distance: ", dist_km, " km<br>",
-#         "Assigned (<= ", max_km, " km): ", status
-#       ),
-#       group = "Nearest links"
-#     )
-# }
-# 
-# # Missing points that were successfully assigned within max_km
-# if (nrow(pts_miss_ok) > 0) {
-#   m_check <- m_check %>%
-#     leaflet::addCircleMarkers(
-#       data = pts_miss_ok,
-#       lng = ~MT_Longitude, lat = ~MT_Latitude,
-#       radius = 6,
-#       color = "black",
-#       weight = 1,
-#       fillColor = "dodgerblue3",
-#       fillOpacity = 0.9,
-#       popup = ~paste0(
-#         "Site: ", Site_name, "<br>",
-#         "Assigned basin: ", basin, "<br>",
-#         "Dist to basin: ", round(dist_to_basin_m / 1000, 2), " km"
-#       ),
-#       group = paste0("Assigned missing (<= ", max_km, " km)")
-#     )
-# }
-# 
-# # Missing points that remained NA (too far away)
-# if (nrow(pts_miss_fail) > 0) {
-#   m_check <- m_check %>%
-#     leaflet::addCircleMarkers(
-#       data = pts_miss_fail,
-#       lng = ~MT_Longitude, lat = ~MT_Latitude,
-#       radius = 6,
-#       color = "black",
-#       weight = 1,
-#       fillColor = "red3",
-#       fillOpacity = 0.9,
-#       popup = ~paste0(
-#         "Site: ", Site_name, "<br>",
-#         "Assigned basin: NA<br>",
-#         "Nearest basin index: ", nn_basin_i, "<br>",
-#         "Dist to basin: ", round(dist_to_basin_m / 1000, 2), " km"
-#       ),
-#       group = "Unassigned missing (> max_km)"
-#     )
-# }
-# 
-# # Fit to the missing points area if any exist; otherwise fit to basins
-# if (nrow(pts_miss_all) > 0) {
-#   bbm <- sf::st_bbox(pts_miss_all)
-#   m_check <- m_check %>%
-#     leaflet::fitBounds(
-#       lng1 = unname(as.numeric(bbm["xmin"])),
-#       lat1 = unname(as.numeric(bbm["ymin"])),
-#       lng2 = unname(as.numeric(bbm["xmax"])),
-#       lat2 = unname(as.numeric(bbm["ymax"]))
-#     )
-# } else {
-#   bbb <- sf::st_bbox(basins_ll)
-#   m_check <- m_check %>%
-#     leaflet::fitBounds(
-#       lng1 = unname(as.numeric(bbb["xmin"])),
-#       lat1 = unname(as.numeric(bbb["ymin"])),
-#       lng2 = unname(as.numeric(bbb["xmax"])),
-#       lat2 = unname(as.numeric(bbb["ymax"]))
-#     )
-# }
-# 
-# m_check <- m_check %>%
-#   leaflet::addLayersControl(
-#     overlayGroups = c(
-#       "Basins",
-#       "Nearest links",
-#       paste0("Assigned missing (<= ", max_km, " km)"),
-#       "Unassigned missing (> max_km)"
-#     ),
-#     options = leaflet::layersControlOptions(collapsed = FALSE)
-#   )
-# 
-# m_check
 
 #compute absolute difference between trends
 
@@ -913,63 +622,503 @@ means_error
 
 
 # #Similar analysis as above but with eco/region/zone/province
-# 
-# # 1) Prep table once
-# dt0 <- prep_comparison_table(
-#   csv_path = paste0(user, "/Documents/R_Scripts/Packages/snow/data/ERA5_manual_comparison.csv")
-# )
-# 
-# # 2) Convert to points
-# pts <- as_points_sf(dt0, lon_col = "Longitude", lat_col = "Latitude", crs = proj)
-# 
-# # 3) Join to a classification polygon layer - choose "mackenzie_ecozonesv2"(layer) & "ECOZONE_NA" (layer_col) or 
-# #"mackenzie_ecoprovinces" (layer) & "ECOPROVI_1" (layer_col) or "mackenzie_ecoregions" & "ECOREGION1"
-# layer <- "mackenzie_ecozonesv2"
-# layer_col <- "ECOZONE_NA"
-# ecozones <- sf::st_read(paste0(user, "/Documents/R_Scripts/Packages/snow/data/Shapefiles/", layer, ".shp")) %>%
-#   sf::st_transform(proj)
-# 
-# pts_ecoz <- attach_region(
-#   pts_sf = pts,
-#   regions_sf = ecozones,
-#   region_name_col = layer_col,
-#   max_km = 50,
-#   region_out_col = layer_col
-# )
-# 
-# # 4) Add error metrics and drop geometry for plotting/stats
-# dt_ecoz <- pts_ecoz %>%
-#   add_error_metrics() %>%
-#   sf::st_drop_geometry()
-# 
-# # 5) Filter ecozones with >=3 observations
-# dt_ecoz_f <- filter_min_group_n(dt_ecoz, group_col = layer_col, n_min = 3)
-# 
-# # 6) Compute group stats (choose normalized vs raw)
-# xy <- get_xy_cols(normalized = TRUE)
-# ecozone_stats <- group_stats(
-#   dt = dt_ecoz_f,
-#   group_col = layer_col,
-#   x_col = xy$x,
-#   y_col = xy$y,
-#   n_min = 3
-# )
-# 
-# # 7) Scatter with separate regression per ecozone
-# p_scatter <- plot_scatter_by_group(
-#   dt = dt_ecoz_f,
-#   group_col = layer_col,
-#   normalized = TRUE,
-#   se = FALSE
-# )
-# 
-# # 8) Boxplots + means
-# longs <- make_long_for_boxplots(dt_ecoz_f, group_col = layer_col, normalized = TRUE)
-# p_swe   <- plot_box_swe(longs$swe_long, group_col = layer_col)
-# p_trend <- plot_box_trend(longs$trend_long, group_col = layer_col, normalized = TRUE)
-# p_err   <- plot_box_error(longs$err_long, group_col = layer_col, normalized = TRUE)
-# means   <- summarize_means(longs$swe_long, longs$trend_long, longs$err_long, group_col = layer_col)
-# means$means_swe
-# means$means_trend
-# means$means_error
 
+# 1) read in table
+dt0 <- read.csv(paste0(user, "/Documents/R_Scripts/Packages/snow/data/ERA5_manual_comparison.csv")) 
+dt0 <- dt0 %>%
+  dplyr::mutate(
+    ERA5_meanmax_mm   = meanmaxswe *1000,
+    Manual_meanmax_mm = sitemeanswe * 10
+  )
+
+# 2) Convert to points
+pts <- as_points_sf(dt0, lon_col = "MT_Longitude", lat_col = "MT_Latitude", crs = proj)
+
+# 3) Join to a classification polygon layer - choose "mackenzie_ecozonesv2"(layer) & "ECOZONE_NA" (layer_col) or
+#"mackenzie_ecoprovinces" (layer) & "ECOPROVI_1" (layer_col) or "mackenzie_ecoregions" & "ECOREGION1"
+layer <- "mackenzie_ecozonesv2"
+layer_col <- "ECOZONE_NA"
+ecozones <- sf::st_read(paste0(user, "/Documents/R_Scripts/Packages/snow/data/Shapefiles/", layer, ".shp")) %>%
+  sf::st_transform(proj)
+
+pts_ecoz <- attach_region(
+  pts_sf = pts,
+  regions_sf = ecozones,
+  region_name_col = layer_col,
+  max_km = 50,
+  region_out_col = layer_col
+)
+
+# 4) Add error metrics and drop geometry for plotting/stats
+dt_ecoz <- pts_ecoz %>%
+  add_error_metrics() %>%
+  sf::st_drop_geometry()
+
+#boxplots
+
+dt <- dt_ecoz %>%
+  dplyr::mutate(
+    # SWE in mm
+    ERA5_meanmax_mm   = meanmaxswe * 1000,
+    Manual_meanmax_mm = sitemeanswe * 10,
+    
+    # Trends (keep as-is unless you have a known unit conversion)
+    ERA5_trend   = Sen_slope,
+    Manual_trend = Magnitude
+  )
+
+
+swe_long <- dt %>%
+  dplyr::select(ECOZONE_NA, ERA5_meanmax_mm, Manual_meanmax_mm) %>%
+  tidyr::pivot_longer(
+    cols = c(ERA5_meanmax_mm, Manual_meanmax_mm),
+    names_to = "source",
+    values_to = "meanmax_swe_mm"
+  ) %>%
+  dplyr::mutate(
+    source = dplyr::recode(
+      source,
+      ERA5_meanmax_mm   = "ERA5-Land",
+      Manual_meanmax_mm = "Manual surveys"
+    )
+  )
+
+p_swe <- ggplot2::ggplot(swe_long, ggplot2::aes(x = ECOZONE_NA, y = meanmax_swe_mm, fill = source)) +
+  ggplot2::geom_boxplot(outlier.alpha = 0) +
+  ggplot2::theme_classic() +
+  ggplot2::geom_jitter() +
+  ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1)) +
+  ggplot2::labs(
+    x = "Ecozone",
+    y = "Mean end-of-season SWE (mm)",
+    fill = NULL
+  ) +
+  ggplot2::theme(
+    panel.border = ggplot2::element_rect(fill = NA, linewidth = 1, color = "black"),
+    axis.text = ggplot2::element_text(size = 12),
+    axis.title = ggplot2::element_text(size = 12),
+    legend.text =  ggplot2::element_text(size = 12) )
+
+p_swe
+
+ggplot2::ggsave(filename = "p_swe.png", dpi = 900, path = savepath)
+
+trend_long <- dt %>%
+  dplyr::select(ECOZONE_NA, ERA5_trend, Manual_trend) %>%
+  tidyr::pivot_longer(
+    cols = c(ERA5_trend, Manual_trend),
+    names_to = "source",
+    values_to = "trend"
+  ) %>%
+  dplyr::mutate(
+    source = dplyr::recode(
+      source,
+      ERA5_trend   = "ERA5-Land",
+      Manual_trend = "Manual surveys"
+    )
+  )
+
+p_trend <- ggplot2::ggplot(trend_long, ggplot2::aes(x = ECOZONE_NA, y = trend, fill = source)) +
+  ggplot2::geom_boxplot(outlier.alpha = 0) +
+  ggplot2::theme_classic() +
+  ggplot2::geom_jitter() +
+  ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1)) +
+  ggplot2::labs(
+    x = "Ecozone",
+    y = "SWE trend (mm/decade)",
+    fill = NULL
+  )+
+  ggplot2::theme(
+    panel.border = ggplot2::element_rect(fill = NA, linewidth = 1, color = "black"),
+    axis.text = ggplot2::element_text(size = 12),
+    axis.title = ggplot2::element_text(size = 12),
+    legend.text =  ggplot2::element_text(size = 12) )
+
+p_trend
+
+ggplot2::ggsave(filename = "p_trend.png", dpi = 900, path = savepath)
+
+p_error <- ggplot2::ggplot(dt, ggplot2::aes(x = ECOZONE_NA, y = abs_err_norm, fill = ECOZONE_NA)) +
+  ggplot2::geom_boxplot(outlier.alpha = 0) +
+  ggplot2::geom_jitter() +
+  ggplot2::theme_classic() +
+  ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1)) +
+  ggplot2::labs(
+    x = "Ecozone",
+    y = "|% change in SWE (ERA5) − % change in SWE (manual)|",
+    fill = NULL
+  )+
+  ggplot2::theme(
+    panel.border = ggplot2::element_rect(fill = NA, linewidth = 1, color = "black"),
+    axis.text = ggplot2::element_text(size = 12),
+    axis.title = ggplot2::element_text(size = 12),
+    legend.text =  ggplot2::element_text(size = 12) )
+
+p_error
+
+ggplot2::ggsave(filename = "p_error.png", dpi = 900, path = savepath)
+
+means_swe <- swe_long %>%
+  dplyr::group_by(ECOZONE_NA, source) %>%
+  dplyr::summarise(
+    n = sum(!is.na(meanmax_swe_mm)),
+    mean_meanmax_swe_mm = mean(meanmax_swe_mm, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+means_trend <- trend_long %>%
+  dplyr::group_by(ECOZONE_NA, source) %>%
+  dplyr::summarise(
+    n = sum(!is.na(trend)),
+    mean_trend = mean(trend, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+means_error <- dt %>%
+  dplyr::group_by(ECOZONE_NA) %>%
+  dplyr::summarise(
+    n = sum(!is.na(abs_err_norm)),
+    mean_error = mean(abs_err_norm, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+means_swe
+means_trend
+means_error
+
+# #Similar analysis as above but with eco/region/zone/province
+
+# 1) read in table
+dt0 <- read.csv(paste0(user, "/Documents/R_Scripts/Packages/snow/data/ERA5_manual_comparison.csv")) 
+  dt0 <- dt0 %>%
+  dplyr::mutate(
+    ERA5_meanmax_mm   = meanmaxswe *1000,
+    Manual_meanmax_mm = sitemeanswe * 10
+  )
+
+# 2) Convert to points
+pts <- as_points_sf(dt0, lon_col = "MT_Longitude", lat_col = "MT_Latitude", crs = proj)
+
+# 3) Join to a classification polygon layer - choose "mackenzie_ecozonesv2"(layer) & "ECOZONE_NA" (layer_col) or
+#"mackenzie_ecoprovinces" (layer) & "ECOPROVI_1" (layer_col) or "mackenzie_ecoregions" & "ECOREGION1"
+layer <- "mackenzie_ecoregions"
+layer_col <- "ECOREGION1"
+ecozones <- sf::st_read(paste0(user, "/Documents/R_Scripts/Packages/snow/data/Shapefiles/", layer, ".shp")) %>%
+  sf::st_transform(proj)
+
+pts_ecoz <- attach_region(
+  pts_sf = pts,
+  regions_sf = ecozones,
+  region_name_col = layer_col,
+  max_km = 50,
+  region_out_col = layer_col
+)
+
+# 4) Add error metrics and drop geometry for plotting/stats
+dt_ecoz <- pts_ecoz %>%
+  add_error_metrics() %>%
+  sf::st_drop_geometry()
+
+#boxplots
+
+dt <- dt_ecoz %>%
+  dplyr::mutate(
+    # SWE in mm
+    ERA5_meanmax_mm   = meanmaxswe * 1000,
+    Manual_meanmax_mm = sitemeanswe * 10,
+    
+    # Trends (keep as-is unless you have a known unit conversion)
+    ERA5_trend   = Sen_slope,
+    Manual_trend = Magnitude
+  )
+
+
+swe_long <- dt %>%
+  dplyr::select(ECOREGION1, ERA5_meanmax_mm, Manual_meanmax_mm) %>%
+  tidyr::pivot_longer(
+    cols = c(ERA5_meanmax_mm, Manual_meanmax_mm),
+    names_to = "source",
+    values_to = "meanmax_swe_mm"
+  ) %>%
+  dplyr::mutate(
+    source = dplyr::recode(
+      source,
+      ERA5_meanmax_mm   = "ERA5-Land",
+      Manual_meanmax_mm = "Manual surveys"
+    )
+  )
+
+p_swe <- ggplot2::ggplot(swe_long, ggplot2::aes(x = ECOREGION1, y = meanmax_swe_mm, fill = source)) +
+  ggplot2::geom_boxplot(outlier.alpha = 0) +
+  ggplot2::theme_classic() +
+  ggplot2::geom_jitter() +
+  ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 90, hjust = 1)) +
+  ggplot2::labs(
+    x = "Ecoregion",
+    y = "Mean end-of-season SWE (mm)",
+    fill = NULL
+  ) +
+  ggplot2::theme(
+    panel.border = ggplot2::element_rect(fill = NA, linewidth = 1, color = "black"),
+    axis.text = ggplot2::element_text(size = 12),
+    axis.title = ggplot2::element_text(size = 12),
+    legend.text =  ggplot2::element_text(size = 12) )
+
+p_swe_region <- p_swe
+
+ggplot2::ggsave(filename = "p_swe_region.png", dpi = 900, path = savepath)
+
+trend_long <- dt %>%
+  dplyr::select(ECOREGION1, ERA5_trend, Manual_trend) %>%
+  tidyr::pivot_longer(
+    cols = c(ERA5_trend, Manual_trend),
+    names_to = "source",
+    values_to = "trend"
+  ) %>%
+  dplyr::mutate(
+    source = dplyr::recode(
+      source,
+      ERA5_trend   = "ERA5-Land",
+      Manual_trend = "Manual surveys"
+    )
+  )
+
+p_trend <- ggplot2::ggplot(trend_long, ggplot2::aes(x = ECOREGION1, y = trend, fill = source)) +
+  ggplot2::geom_boxplot(outlier.alpha = 0) +
+  ggplot2::theme_classic() +
+  ggplot2::geom_jitter() +
+  ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 90, hjust = 1)) +
+  ggplot2::labs(
+    x = "Ecoregion",
+    y = "SWE trend (mm/decade)",
+    fill = NULL
+  )+
+  ggplot2::theme(
+    panel.border = ggplot2::element_rect(fill = NA, linewidth = 1, color = "black"),
+    axis.text = ggplot2::element_text(size = 12),
+    axis.title = ggplot2::element_text(size = 12),
+    legend.text =  ggplot2::element_text(size = 12) )
+
+p_trend_region <- p_trend
+
+ggplot2::ggsave(filename = "p_trend_region.png", dpi = 900, path = savepath)
+
+p_error <- ggplot2::ggplot(dt, ggplot2::aes(x = ECOREGION1, y = abs_err_norm, fill = ECOREGION1)) +
+  ggplot2::geom_boxplot(outlier.alpha = 0) +
+  ggplot2::geom_jitter() +
+  ggplot2::theme_classic() +
+  ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 90, hjust = 1)) +
+  ggplot2::labs(
+    x = "Ecoregion",
+    y = "|% change in SWE (ERA5) − % change in SWE (manual)|",
+    fill = NULL
+  )+
+  ggplot2::theme(
+    panel.border = ggplot2::element_rect(fill = NA, linewidth = 1, color = "black"),
+    axis.text = ggplot2::element_text(size = 12),
+    axis.title = ggplot2::element_text(size = 12) )
+    #,
+    #legend.text =  ggplot2::element_text(size = 12) )
+
+p_error_region <- p_error
+
+ggplot2::ggsave(filename = "p_error_region.png", dpi = 900, path = savepath)
+
+means_swe <- swe_long %>%
+  dplyr::group_by(ECOREGION1, source) %>%
+  dplyr::summarise(
+    n = sum(!is.na(meanmax_swe_mm)),
+    mean_meanmax_swe_mm = mean(meanmax_swe_mm, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+means_trend <- trend_long %>%
+  dplyr::group_by(ECOREGION1, source) %>%
+  dplyr::summarise(
+    n = sum(!is.na(trend)),
+    mean_trend = mean(trend, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+means_error <- dt %>%
+  dplyr::group_by(ECOREGION1) %>%
+  dplyr::summarise(
+    n = sum(!is.na(abs_err_norm)),
+    mean_error = mean(abs_err_norm, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+means_swe
+means_trend
+means_error
+
+# #Similar analysis as above but with eco/region/zone/province
+
+# 1) read in table
+dt0 <- read.csv(paste0(user, "/Documents/R_Scripts/Packages/snow/data/ERA5_manual_comparison.csv")) 
+dt0 <- dt0 %>%
+  dplyr::mutate(
+    ERA5_meanmax_mm   = meanmaxswe *1000,
+    Manual_meanmax_mm = sitemeanswe * 10
+  )
+
+# 2) Convert to points
+pts <- as_points_sf(dt0, lon_col = "MT_Longitude", lat_col = "MT_Latitude", crs = proj)
+
+# 3) Join to a classification polygon layer - choose "mackenzie_ecozonesv2"(layer) & "ECOZONE_NA" (layer_col) or
+#"mackenzie_ecoprovinces" (layer) & "ECOPROVI_1" (layer_col) or "mackenzie_ecoregions" & "ECOREGION1"
+layer <- "mackenzie_ecoprovinces"
+layer_col <- "ECOPROVI_1"
+ecozones <- sf::st_read(paste0(user, "/Documents/R_Scripts/Packages/snow/data/Shapefiles/", layer, ".shp")) %>%
+  sf::st_transform(proj)
+
+pts_ecoz <- attach_region(
+  pts_sf = pts,
+  regions_sf = ecozones,
+  region_name_col = layer_col,
+  max_km = 50,
+  region_out_col = layer_col
+)
+
+# 4) Add error metrics and drop geometry for plotting/stats
+dt_ecoz <- pts_ecoz %>%
+  add_error_metrics() %>%
+  sf::st_drop_geometry()
+
+#boxplots
+
+dt <- dt_ecoz %>%
+  dplyr::mutate(
+    # SWE in mm
+    ERA5_meanmax_mm   = meanmaxswe * 1000,
+    Manual_meanmax_mm = sitemeanswe * 10,
+    
+    # Trends (keep as-is unless you have a known unit conversion)
+    ERA5_trend   = Sen_slope,
+    Manual_trend = Magnitude
+  )
+
+
+swe_long <- dt %>%
+  dplyr::select(ECOPROVI_1, ERA5_meanmax_mm, Manual_meanmax_mm) %>%
+  tidyr::pivot_longer(
+    cols = c(ERA5_meanmax_mm, Manual_meanmax_mm),
+    names_to = "source",
+    values_to = "meanmax_swe_mm"
+  ) %>%
+  dplyr::mutate(
+    source = dplyr::recode(
+      source,
+      ERA5_meanmax_mm   = "ERA5-Land",
+      Manual_meanmax_mm = "Manual surveys"
+    )
+  )
+
+p_swe <- ggplot2::ggplot(swe_long, ggplot2::aes(x = ECOPROVI_1, y = meanmax_swe_mm, fill = source)) +
+  ggplot2::geom_boxplot(outlier.alpha = 0) +
+  ggplot2::theme_classic() +
+  ggplot2::geom_jitter() +
+  ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1)) +
+  ggplot2::labs(
+    x = "Ecoprovince",
+    y = "Mean end-of-season SWE (mm)",
+    fill = NULL
+  ) +
+  ggplot2::theme(
+    panel.border = ggplot2::element_rect(fill = NA, linewidth = 1, color = "black"),
+    axis.text = ggplot2::element_text(size = 12),
+    axis.title = ggplot2::element_text(size = 12),
+    legend.text =  ggplot2::element_text(size = 12) )
+
+p_swe_ecoprov <- p_swe
+
+p_swe_ecoprov
+
+ggplot2::ggsave(filename = "p_swe_ecoprov.png", dpi = 900, path = savepath)
+
+trend_long <- dt %>%
+  dplyr::select(ECOPROVI_1, ERA5_trend, Manual_trend) %>%
+  tidyr::pivot_longer(
+    cols = c(ERA5_trend, Manual_trend),
+    names_to = "source",
+    values_to = "trend"
+  ) %>%
+  dplyr::mutate(
+    source = dplyr::recode(
+      source,
+      ERA5_trend   = "ERA5-Land",
+      Manual_trend = "Manual surveys"
+    )
+  )
+
+p_trend <- ggplot2::ggplot(trend_long, ggplot2::aes(x = ECOPROVI_1, y = trend, fill = source)) +
+  ggplot2::geom_boxplot(outlier.alpha = 0) +
+  ggplot2::theme_classic() +
+  ggplot2::geom_jitter() +
+  ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1)) +
+  ggplot2::labs(
+    x = "Ecoprovince",
+    y = "SWE trend (mm/decade)",
+    fill = NULL
+  )+
+  ggplot2::theme(
+    panel.border = ggplot2::element_rect(fill = NA, linewidth = 1, color = "black"),
+    axis.text = ggplot2::element_text(size = 12),
+    axis.title = ggplot2::element_text(size = 12),
+    legend.text =  ggplot2::element_text(size = 12) )
+
+p_trend_ecoprov <- p_trend
+
+p_trend_ecoprov
+
+ggplot2::ggsave(filename = "p_trend_ecoprov.png", dpi = 900, path = savepath)
+
+p_error <- ggplot2::ggplot(dt, ggplot2::aes(x = ECOPROVI_1, y = abs_err_norm, fill = ECOPROVI_1)) +
+  ggplot2::geom_boxplot(outlier.alpha = 0) +
+  ggplot2::geom_jitter() +
+  ggplot2::theme_classic() +
+  ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1)) +
+  ggplot2::labs(
+    x = "Ecoprovince",
+    y = "|% change in SWE (ERA5) − % change in SWE (manual)|",
+    fill = NULL
+  )+
+  ggplot2::theme(
+    panel.border = ggplot2::element_rect(fill = NA, linewidth = 1, color = "black"),
+    axis.text = ggplot2::element_text(size = 12),
+    axis.title = ggplot2::element_text(size = 12),
+    legend.text =  ggplot2::element_text(size = 12) )
+
+p_error_ecoprov <- p_error
+
+p_error_ecoprov 
+
+ggplot2::ggsave(filename = "p_error_ecoprov.png", dpi = 900, path = savepath)
+
+means_swe <- swe_long %>%
+  dplyr::group_by(ECOPROVI_1, source) %>%
+  dplyr::summarise(
+    n = sum(!is.na(meanmax_swe_mm)),
+    mean_meanmax_swe_mm = mean(meanmax_swe_mm, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+means_trend <- trend_long %>%
+  dplyr::group_by(ECOPROVI_1, source) %>%
+  dplyr::summarise(
+    n = sum(!is.na(trend)),
+    mean_trend = mean(trend, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+means_error <- dt %>%
+  dplyr::group_by(ECOPROVI_1) %>%
+  dplyr::summarise(
+    n = sum(!is.na(abs_err_norm)),
+    mean_error = mean(abs_err_norm, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+means_swe
+means_trend
+means_error
