@@ -12,8 +12,6 @@ library(tidyr)
 
 #specify user
 user <- paste0("C:/Users/", tolower(Sys.getenv("USERNAME")))
-user      <- file.path("/Users/emmariley")
-
 
 # Define `%>%` operator in current environment
 `%>%` <- magrittr::`%>%`
@@ -524,9 +522,9 @@ swe_long <- dt %>%
   )
 
 p_swe <- ggplot2::ggplot(swe_long, ggplot2::aes(x = basin, y = meanmax_swe_mm, fill = source)) +
-  ggplot2::geom_boxplot(outlier.alpha = 0) +
+  ggplot2::geom_boxplot(outlier.alpha = 0.2) +
   ggplot2::theme_classic() +
-  ggplot2::geom_jitter() +
+  #ggplot2::geom_jitter() +
   ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1)) +
   ggplot2::labs(
     x = "Basin",
@@ -540,6 +538,10 @@ p_swe <- ggplot2::ggplot(swe_long, ggplot2::aes(x = basin, y = meanmax_swe_mm, f
     legend.text =  ggplot2::element_text(size = 12) )
 
 p_swe
+
+p_swe_basin <- p_swe
+
+ggplot2::ggsave(filename = "p_swe_basin.png", dpi = 900, path = savepath)
 
 trend_long <- dt %>%
   dplyr::select(basin, ERA5_trend, Manual_trend) %>%
@@ -557,9 +559,10 @@ trend_long <- dt %>%
   )
 
 p_trend <- ggplot2::ggplot(trend_long, ggplot2::aes(x = basin, y = trend, fill = source)) +
-  ggplot2::geom_boxplot(outlier.alpha = 0) +
+  ggplot2::geom_boxplot(outlier.alpha = 0.2) +
   ggplot2::theme_classic() +
-  ggplot2::geom_jitter() +
+  #ggplot2::geom_jitter() +
+  ggplot2::geom_abline(slope = 0, linetype = "dashed") +
   ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1)) +
   ggplot2::labs(
     x = "Basin",
@@ -574,9 +577,13 @@ p_trend <- ggplot2::ggplot(trend_long, ggplot2::aes(x = basin, y = trend, fill =
 
 p_trend
 
+p_trend_basin <- p_trend
+
+ggplot2::ggsave(filename = "p_trend_basin.png", dpi = 900, path = savepath)
+
 p_error <- ggplot2::ggplot(dt, ggplot2::aes(x = basin, y = abs_err_norm, fill = basin)) +
-  ggplot2::geom_boxplot(outlier.alpha = 0) +
-  ggplot2::geom_jitter() +
+  ggplot2::geom_boxplot(outlier.alpha = 0.2) +
+  #ggplot2::geom_jitter() +
   ggplot2::theme_classic() +
   ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1)) +
   ggplot2::labs(
@@ -591,6 +598,10 @@ p_error <- ggplot2::ggplot(dt, ggplot2::aes(x = basin, y = abs_err_norm, fill = 
     legend.text =  ggplot2::element_text(size = 12) )
 
 p_error
+
+p_error_basin <- p_error
+
+ggplot2::ggsave(filename = "p_error_basin.png", dpi = 900, path = savepath)
 
 means_swe <- swe_long %>%
   dplyr::group_by(basin, source) %>%
@@ -620,6 +631,27 @@ means_swe
 means_trend
 means_error
 
+#differences between ERA5-Land and SS when grouped by basin
+
+basin <- unique(dt$basin)
+
+wilcox.test.results <- data.frame(
+  test_results_p = numeric(),
+  basin = character()
+)
+
+for (i in basin){
+  dt_basin <- dt[dt$basin == i, ]
+  
+  test <- wilcox.test(dt_basin$Manual_meanmax_mm, dt_basin$ERA5_meanmax_mm, alternative = "two.sided")
+  
+  wilcox.test.results <- wilcox.test.results %>%
+    dplyr::add_row(
+      basin = i,
+      test_results_p = test$p.value
+    )
+  
+}
 
 # #Similar analysis as above but with eco/region/zone/province
 
@@ -684,9 +716,9 @@ swe_long <- dt %>%
   )
 
 p_swe <- ggplot2::ggplot(swe_long, ggplot2::aes(x = ECOZONE_NA, y = meanmax_swe_mm, fill = source)) +
-  ggplot2::geom_boxplot(outlier.alpha = 0) +
+  ggplot2::geom_boxplot(outlier.alpha = 0.2) +
   ggplot2::theme_classic() +
-  ggplot2::geom_jitter() +
+  #gplot2::geom_jitter() +
   ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1)) +
   ggplot2::labs(
     x = "Ecozone",
@@ -719,9 +751,10 @@ trend_long <- dt %>%
   )
 
 p_trend <- ggplot2::ggplot(trend_long, ggplot2::aes(x = ECOZONE_NA, y = trend, fill = source)) +
-  ggplot2::geom_boxplot(outlier.alpha = 0) +
+  ggplot2::geom_boxplot(outlier.alpha = 0.2) +
   ggplot2::theme_classic() +
-  ggplot2::geom_jitter() +
+  #ggplot2::geom_jitter() +
+  ggplot2::geom_abline(slope = 0, linetype = "dashed") +
   ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1)) +
   ggplot2::labs(
     x = "Ecozone",
@@ -739,8 +772,8 @@ p_trend
 ggplot2::ggsave(filename = "p_trend.png", dpi = 900, path = savepath)
 
 p_error <- ggplot2::ggplot(dt, ggplot2::aes(x = ECOZONE_NA, y = abs_err_norm, fill = ECOZONE_NA)) +
-  ggplot2::geom_boxplot(outlier.alpha = 0) +
-  ggplot2::geom_jitter() +
+  ggplot2::geom_boxplot(outlier.alpha = 0.2) +
+  #ggplot2::geom_jitter() +
   ggplot2::theme_classic() +
   ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1)) +
   ggplot2::labs(
@@ -785,6 +818,28 @@ means_error <- dt %>%
 means_swe
 means_trend
 means_error
+
+#differences between ERA5-Land and SS when grouped by ecozone
+
+ecozone <- unique(dt_ecoz$ECOZONE_NA)
+
+wilcox.test.results <- data.frame(
+  test_results_p = numeric(),
+  ecozone = character()
+)
+
+for (i in ecozone){
+  dt_eco <- dt[dt_ecoz$ECOZONE_NA == i, ]
+  
+  test <- wilcox.test(dt_eco$Manual_meanmax_mm, dt_eco$ERA5_meanmax_mm, alternative = "two.sided")
+  
+  wilcox.test.results <- wilcox.test.results %>%
+    dplyr::add_row(
+      ecozone = i,
+      test_results_p = test$p.value
+    )
+  
+}
 
 # #Similar analysis as above but with eco/region/zone/province
 
@@ -849,9 +904,9 @@ swe_long <- dt %>%
   )
 
 p_swe <- ggplot2::ggplot(swe_long, ggplot2::aes(x = ECOREGION1, y = meanmax_swe_mm, fill = source)) +
-  ggplot2::geom_boxplot(outlier.alpha = 0) +
+  ggplot2::geom_boxplot(outlier.alpha = 0.2) +
   ggplot2::theme_classic() +
-  ggplot2::geom_jitter() +
+  #ggplot2::geom_jitter() +
   ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 90, hjust = 1)) +
   ggplot2::labs(
     x = "Ecoregion",
@@ -884,9 +939,10 @@ trend_long <- dt %>%
   )
 
 p_trend <- ggplot2::ggplot(trend_long, ggplot2::aes(x = ECOREGION1, y = trend, fill = source)) +
-  ggplot2::geom_boxplot(outlier.alpha = 0) +
+  ggplot2::geom_boxplot(outlier.alpha = 0.2) +
   ggplot2::theme_classic() +
-  ggplot2::geom_jitter() +
+  ggplot2::geom_abline(slope = 0, linetype = "dashed") +
+  #ggplot2::geom_jitter() +
   ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 90, hjust = 1)) +
   ggplot2::labs(
     x = "Ecoregion",
@@ -904,8 +960,8 @@ p_trend_region <- p_trend
 ggplot2::ggsave(filename = "p_trend_region.png", dpi = 900, path = savepath)
 
 p_error <- ggplot2::ggplot(dt, ggplot2::aes(x = ECOREGION1, y = abs_err_norm, fill = ECOREGION1)) +
-  ggplot2::geom_boxplot(outlier.alpha = 0) +
-  ggplot2::geom_jitter() +
+  ggplot2::geom_boxplot(outlier.alpha = 0.2) +
+  #ggplot2::geom_jitter() +
   ggplot2::theme_classic() +
   ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 90, hjust = 1)) +
   ggplot2::labs(
@@ -951,6 +1007,30 @@ means_error <- dt %>%
 means_swe
 means_trend
 means_error
+
+#differences between ERA5-Land and SS when grouped by ecoregion
+
+ecoregion <- unique(dt_ecoz$ECOREGION1)
+
+wilcox.test.results <- data.frame(
+  test_results_p = numeric(),
+  ecoregion = character()
+)
+
+for (i in ecoregion){
+  dt_eco <- dt[dt_ecoz$ECOREGION1 == i, ]
+  
+  if(dplyr::n_distinct(dt_eco$Manual_meanmax_mm) <= 2) next
+  
+  test <- wilcox.test(dt_eco$Manual_meanmax_mm, dt_eco$ERA5_meanmax_mm, alternative = "two.sided")
+  
+  wilcox.test.results <- wilcox.test.results %>%
+    dplyr::add_row(
+      ecoregion = i,
+      test_results_p = test$p.value
+    )
+  
+}
 
 # #Similar analysis as above but with eco/region/zone/province
 
@@ -1015,9 +1095,9 @@ swe_long <- dt %>%
   )
 
 p_swe <- ggplot2::ggplot(swe_long, ggplot2::aes(x = ECOPROVI_1, y = meanmax_swe_mm, fill = source)) +
-  ggplot2::geom_boxplot(outlier.alpha = 0) +
+  ggplot2::geom_boxplot(outlier.alpha = 0.2) +
   ggplot2::theme_classic() +
-  ggplot2::geom_jitter() +
+  #ggplot2::geom_jitter() +
   ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1)) +
   ggplot2::labs(
     x = "Ecoprovince",
@@ -1052,9 +1132,10 @@ trend_long <- dt %>%
   )
 
 p_trend <- ggplot2::ggplot(trend_long, ggplot2::aes(x = ECOPROVI_1, y = trend, fill = source)) +
-  ggplot2::geom_boxplot(outlier.alpha = 0) +
+  ggplot2::geom_boxplot(outlier.alpha = 0.2) +
   ggplot2::theme_classic() +
-  ggplot2::geom_jitter() +
+  ggplot2::geom_abline(slope = 0, linetype = "dashed") +
+  #ggplot2::geom_jitter() +
   ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1)) +
   ggplot2::labs(
     x = "Ecoprovince",
@@ -1074,8 +1155,8 @@ p_trend_ecoprov
 ggplot2::ggsave(filename = "p_trend_ecoprov.png", dpi = 900, path = savepath)
 
 p_error <- ggplot2::ggplot(dt, ggplot2::aes(x = ECOPROVI_1, y = abs_err_norm, fill = ECOPROVI_1)) +
-  ggplot2::geom_boxplot(outlier.alpha = 0) +
-  ggplot2::geom_jitter() +
+  ggplot2::geom_boxplot(outlier.alpha = 0.2) +
+  #ggplot2::geom_jitter() +
   ggplot2::theme_classic() +
   ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1)) +
   ggplot2::labs(
@@ -1122,3 +1203,27 @@ means_error <- dt %>%
 means_swe
 means_trend
 means_error
+
+#differences between ERA5-Land and SS when grouped by ecoregion
+
+ecoprovince <- unique(dt_ecoz$ECOPROVI_1)
+
+wilcox.test.results <- data.frame(
+  test_results_p = numeric(),
+  ecoprovince = character()
+)
+
+for (i in ecoprovince){
+  dt_eco <- dt[dt_ecoz$ECOPROVI_1 == i, ]
+  
+  if(dplyr::n_distinct(dt_eco$Manual_meanmax_mm) <= 2) next
+  
+  test <- wilcox.test(dt_eco$Manual_meanmax_mm, dt_eco$ERA5_meanmax_mm, alternative = "two.sided")
+  
+  wilcox.test.results <- wilcox.test.results %>%
+    dplyr::add_row(
+      ecoprovince = i,
+      test_results_p = test$p.value
+    )
+  
+}
