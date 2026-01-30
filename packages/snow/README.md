@@ -34,11 +34,8 @@ This package requires R (>= 4.0.0) and several dependencies. Some dependencies m
 ### Install the Package
 
 ```r
-# Install from GitHub (once repository is available)
-devtools::install_github("EmmaGRiley/snow")
+It is recommended to clone this package on your local computer, and run from there.
 
-# Or install from local directory
-devtools::install("EmmaGRiley/snow")
 ```
 
 ## Package Structure
@@ -55,9 +52,9 @@ The package is organized into several modules:
 The following scripts are provided for specific analyses but may require user-specific data paths:
 
 - **`ERA5_snowtrends_map_hourly.R`**: Main script for ERA5-Land trend analysis and mapping
-- **`ERA5_snowcomparison_ER.R`**: Comparison between ERA5-Land and manual survey trends
-- **`ERA5_snow_mapping.R`**: ERA5 snow mapping visualization
-- **`ERA5_spring_snow_analysis.R`**: Spring snow depth analysis using ERA5-Land data
+- **`ERA5_snowcomparison_ER.R`**: Comparison between ERA5-Land and manual survey trends, and grouping data based on basins and ecozone/region/province
+- **`ERA5_snow_mapping.R`**: ERA5 snow mapping visualization - for percent of normal for a given year relative to the historic period
+- **`ERA5_spring_snow_analysis.R`**: Download spring max snow depth using the ERA5-Land dataset
 - **`SWE_adjust_extra_depths.R`**: Adjustment of SWE values using extra depth measurements
 - **`SWE_summary.R`**: Summary statistics and visualization functions
 
