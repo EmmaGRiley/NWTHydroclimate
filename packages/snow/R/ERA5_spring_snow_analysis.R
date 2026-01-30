@@ -29,8 +29,8 @@ long_max = -95
 interval = 0.1
 
 #define api connection details
-api_user <- "emma_riley@gov.nt.ca"
-api_key <- "3bbd209c-ca7d-4aec-85f9-d764a16bbc9d"
+api_user <- ""
+api_key <- ""
 
 #define file names
 file <- "Feb_max_"
