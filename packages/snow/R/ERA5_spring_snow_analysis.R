@@ -75,7 +75,7 @@ get_spring_snow <- function(year) {
 }
 
 # Process each year 
-for(year in 1995:2025) {
+for(year in 1995:2026) {
   tryCatch({
     cat(sprintf("\nProcessing year %d...\n", year))
     
@@ -90,7 +90,7 @@ for(year in 1995:2025) {
 combined_max_snow <- NULL
 
 #combine nc files into one dataframe
-for (year in 1995:2025) {
+for (year in 1995:2026) {
   tryCatch({
     cat(sprintf("\nProcessing year %d...\n", year))
 
