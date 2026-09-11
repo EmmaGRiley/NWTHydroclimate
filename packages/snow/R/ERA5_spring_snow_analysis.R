@@ -10,7 +10,7 @@ user <- paste0("C:/Users/", tolower(Sys.getenv("USERNAME"))) # PC version
 options(download.file.method = "wininet", timeout = 300)
 install.packages(c("ecmwfr", "ncdf4", "automap", "foreach", "doSNOW", "pbapply", "cowplot"),
                  dependencies = TRUE)
-install.packages(paste0(user, "/Documents/R_Scripts/Packages/github_clones/KrigR-master"), repos = NULL, type = "source")
+install.packages(paste0(user, "/Documents/Github/KrigR"), repos = NULL, type = "source")
 
 # Required libraries
 library(KrigR)
@@ -20,6 +20,7 @@ library(ggplot2)
 library(magrittr)
 library(lubridate)
 library(ggrepel)
+library(sf)
 
 # Define spatial extent
 lat_min = 51
@@ -29,11 +30,11 @@ long_max = -95
 interval = 0.1
 
 #define api connection details
-api_user <- ""
-api_key <- ""
+api_user <- Sys.getenv("CDS_USER")
+api_key <- Sys.getenv("CDS_KEY")
 
 #define file names
-file <- "Feb_max_"
+file <- "spring_max_"
 
 # Create extent object for KrigR
 study_extent <- terra::ext(c(long_min, long_max, lat_min, lat_max))
@@ -49,7 +50,7 @@ spring_max_snow <- data.frame(
 get_spring_snow <- function(year) {
   # Define date range for spring (March-May)
   date_start <- paste0(year, "-02-01 00:00") #change these each time according to date. default "-02-01 00:00"
-  date_stop <- paste0(year, "-03-01 23:00") #change these each time according to date. default "-05-31 23:00"
+  date_stop <- paste0(year, "-05-31 23:00") #change these each time according to date. default "-05-31 23:00"
   
   # Download data using CDownloadS
   snow_data <- CDownloadS(
@@ -75,7 +76,7 @@ get_spring_snow <- function(year) {
 }
 
 # Process each year 
-for(year in 1995:2026) {
+for(year in 2026) {
   tryCatch({
     cat(sprintf("\nProcessing year %d...\n", year))
     
@@ -170,18 +171,23 @@ for (year in 1995:2026) {
   })
 }
 
-write.csv(combined_max_snow, (paste0(user, "/Documents/R_Scripts/Packages/ERA5/data/SWEmax_dataset/", file, "_combined_max_snow.csv")))
+write.csv(combined_max_snow, (paste0(user, "/Documents/R_Scripts/Packages/snow/data/SWEmax_dataset/", file, "_combined_max_snow.csv")))
 
 #combining february max snow and march 1 - May 31st march snow
 #replace max snow values in march 1-may 31 data if the february value is higher
 
-combined_max_snow_feb <-  read.csv(paste0(user, "/Documents/R_Scripts/Packages/ERA5/data/SWEmax_dataset/feb_max__combined_max_snow.csv")) %>%
+combined_max_snow_feb <-  read.csv(paste0(user, "/Documents/R_Scripts/Packages/ERA5/data/SWEmax_dataset/FebMar_max__combined_max_snow.csv")) %>%
   dplyr::select(-c(X))
 
 combined_max_snow_marchmay <-  read.csv(paste0(user, "/Documents/R_Scripts/Packages/ERA5/data/SWEmax_dataset/combined_max_snow_march_may.csv")) %>%
   dplyr::select(-c(X))
+
+#bring in older data if needed 
+
+combined_max_snow_1960_94 <- read.csv(paste0(user, "/Documents/R_Scripts/Packages/ERA5/data/SWEmax_dataset/spring_max__combined_max_snow60_94.csv")) %>%
+  dplyr::select(-c(X))
   
-#pivot dataframe
+#pivot dataframes
 
 combined_max_snow_marchmay <- combined_max_snow_marchmay %>%
   tidyr::pivot_longer(cols = dplyr::starts_with("Snow_") & !dplyr::matches("Snow_Avg"),
@@ -205,18 +211,55 @@ combined_max_snow_feb <- combined_max_snow_feb %>%
 combined_max_snow_feb <- combined_max_snow_feb %>%
   dplyr::select(Latitude, Longitude, sd, sd_year) 
 
+combined_max_snow_1960_94 <- combined_max_snow_1960_94 %>%
+  tidyr::pivot_longer(cols = dplyr::starts_with("Snow_") & !dplyr::matches("Snow_Avg"),
+                      names_to = "sd_year",
+                      names_prefix = "Snow_",
+                      values_to = "sd") %>%
+  dplyr::rename(Latitude = lat,
+                Longitude = lon)
+
+combined_max_snow_1960_94 <- combined_max_snow_1960_94 %>%
+  dplyr::select(Latitude, Longitude, sd, sd_year) 
+
 #filter datasets to MRB
 proj <- '+proj=longlat +datum=WGS84'
 
 combined_max_snow_sf <- sf::st_as_sf(combined_max_snow_feb, coords = c("Longitude", "Latitude"), crs = proj)
 combined_max_snow_marchmay_sf <- sf::st_as_sf(combined_max_snow_marchmay, coords = c("Longitude", "Latitude"), crs = proj)
+combined_max_snow_1960_94_sf <- sf::st_as_sf(combined_max_snow_1960_94, coords = c("Longitude", "Latitude"), crs = proj)
 
 Mack <- sf::st_read(paste0(user, "/Documents/R_Scripts/Packages/snow/data/Shapefiles/MackenzieRiverBasin_FDA.shp"),
                     layer = "MackenzieRiverBasin_FDA")
 Mack <- sf::st_transform(Mack, sp::CRS(proj)) # Change the projection
 Mack <- sf::st_zm(Mack)
-combined_max_snow_sf <- sf::st_intersection(combined_max_snow_sf, Mack)
-combined_max_snow_marchmay_sf <- sf::st_intersection(combined_max_snow_marchmay_sf, Mack)
+
+#filter datasets to NWT
+# NWT <- sf::st_read(paste0(user,
+#                           "/Documents/R_Scripts/Packages/snow/data/Shapefiles/NWT_ENR_BND_FND.shp"),
+#                    layer = "NWT_ENR_BND_FND")
+# NWT <- sf::st_transform(NWT, sp::CRS(proj)) # Change the projection
+# NWT <- sf::st_zm(NWT)
+
+NWT <- sf::st_read(
+  dsn   = file.path(user, "Documents", "Shapefiles", "geo_political_region_2.shp"),
+  layer = "geo_political_region_2",
+  query = "SELECT * FROM geo_political_region_2 WHERE juri_en = 'Northwest Territories'",
+  quiet = TRUE
+)
+NWT <- sf::st_make_valid(NWT)
+NWT <- sf::st_transform(NWT, sp::CRS(proj)) # Change the projection
+
+
+#combined_max_snow_sf <- sf::st_intersection(combined_max_snow_sf, Mack)
+#combined_max_snow_marchmay_sf <- sf::st_intersection(combined_max_snow_marchmay_sf, Mack)
+
+#combined_max_snow_sf <- sf::st_intersection(combined_max_snow_sf, NWT)
+#combined_max_snow_marchmay_sf <- sf::st_intersection(combined_max_snow_marchmay_sf, NWT)
+
+combined_max_snow_sf <- sf::st_filter(combined_max_snow_sf, NWT, .predicate = sf::st_intersects)
+combined_max_snow_1960_94_sf <- sf::st_filter(combined_max_snow_1960_94_sf, NWT, .predicate = sf::st_intersects)
+combined_max_snow_marchmay_sf <- sf::st_filter(combined_max_snow_marchmay_sf, NWT, .predicate = sf::st_intersects)
 
 #update march_may max where february max is higher
 
@@ -256,6 +299,16 @@ mm_df <- add_coords(combined_max_snow_marchmay_sf) %>%
     sd_mm     = sd
   ) %>%
   select(Longitude, Latitude, year, sd_mm)
+
+older_df <- add_coords(combined_max_snow_1960_94_sf) %>%
+  mutate(
+    Longitude = round_key(Longitude, 4),
+    Latitude  = round_key(Latitude, 4),
+    year      = as.integer(sd_year),
+    sd_mm     = sd
+  ) %>%
+  select(Longitude, Latitude, year, sd_mm) %>%
+  rename("sd_year"="year")
 
 
 # De-duplicate (st_intersection can replicate boundary points)
@@ -311,4 +364,13 @@ qa_by_year <- mm_updated %>%
 print(qa_overall)
 print(head(qa_by_year, 10))
 
-write.csv(mm_updated, paste0(getwd(), "/ERA5_updatedfeb_may.csv"))
+ERA51995_2025_updated <- mm_updated %>%
+  dplyr::select(Latitude, Longitude, sd_updated, year) %>%
+  dplyr::rename("sd_mm" = "sd_updated",
+                "sd_year" = "year")
+
+ERA51960_2025_updated <- rbind(ERA51995_2025_updated, older_df)
+  
+write.csv(mm_updated, paste0(getwd(), "/ERA5_updatedfeb_mayNWT.csv"))
+
+write.csv(ERA51960_2025_updated, paste0(getwd(), "/ERA5_updated1960_2025NWT.csv"))

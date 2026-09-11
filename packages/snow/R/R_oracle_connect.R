@@ -6,12 +6,13 @@ library(odbc)
 # Setting up connection (note that you must disconnect from one before connecting to another):
 #These lines connect to the database in development
 
-user <- paste0("C:/Users/", tolower(Sys.getenv("USERNAME")), "/Documents/")
-snow_package_path <- paste0(user, "R_Scripts/Packages/snow/")
+user <- paste0("C:/Users/", tolower(Sys.getenv("USERNAME")))
+snow_package_path <- paste0(user, "/Documents/R_Scripts/Packages/snow/")
 
 #SnowDB connection
-connection <- odbc::dbConnect(drv = odbc::odbc(), dsn = "",
-                              uid = "", pwd = "")
+connection <- odbc::dbConnect(drv = odbc::odbc(), dsn = "ECC_WMSD_SNOW",
+                              uid = Sys.getenv("ORACLE_SNOW_USER"),
+                              pwd = Sys.getenv("ORACLE_SNOW_PWD"))
 
 #######################################################################
 #req functions:
@@ -144,5 +145,9 @@ md_3 <- md_3 %>%
                 "latitude" = "lt") %>%
   dplyr::select(-c(cf))
 
+# saveRDS(md_3, "C:/Users/Emma_gregory/Documents/md_3.rds")
+# saveRDS(sites, "C:/Users/Emma_gregory/Documents/sites.rds")
+# saveRDS(snow, "C:/Users/Emma_gregory/Documents/snow.rds")
+# saveRDS(depths, "C:/Users/Emma_gregory/Documents/depths.rds")
 
 

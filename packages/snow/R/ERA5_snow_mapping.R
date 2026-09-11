@@ -6,6 +6,9 @@ library(leaflet)
 #opposite of %in%:
 `%!in%` = Negate(`%in%`)
 
+#define user
+user <- paste0("C:/Users/", tolower(Sys.getenv("USERNAME"))) # PC version
+
 #bring in manual snow survey data
 source(paste0(user, "/Documents/R_Scripts/Packages/snow/R/R_Oracle_Connect.R"))
 
@@ -45,15 +48,15 @@ nwt_elevation_data <- unique(nwt_elevation_data)
 coordinates_high_res <- read.csv(paste0(user, "/Documents/R_Scripts/Packages/snow/data/site_coordinates_highres.csv"))
 
 #mapping and analysis variables
-file <- "April_max_"
-current_year <- 2024
+file <- "May_14max_" #specify "max_spring" for max spring values 
+current_year <- 2026
 selected_layer = "all"
 clip_ERA5 = T
-add_legend = T
+add_legend = F
 mack_basin_outline = T
 save = T
-manual_sites = T
-NWT_border = TRUE
+manual_sites = F
+NWT_border = FALSE
 act = c("IA", "A")
 surface = c("upland")
 flags = c("Y", "Sk", "P", "Sk_2")
@@ -62,29 +65,41 @@ ldensity = 0.1
 data = md_3
 exclude_sites = NA
 start_year = 1995
-end_year = 2025
-min_year = 24
+end_year = 2026
+min_year = abs(start_year-end_year) * 0.75
 
 #set web shot path
 Sys.setenv(PATH = paste0(user, "/Documents/Modelling/phantomjs/phantomjs/bin")) #can install phantomjs executable here: webshot::install_phantomjs()
 
-ERA5_snow <- read.csv(paste0(user, "/Documents/R_Scripts/Packages/ERA5/data/SWEmax_dataset/", file, "_combined_max_snow.csv")) %>%
-  dplyr::select(-c(X)) 
+if (file == "max_spring"){
+  ERA5_snow <- read.csv(paste0(user, "/Documents/R_Scripts/Packages/snow/data/SWEmax_dataset/ERA5_updatedfeb_may.csv")) %>%
+    dplyr::select(-c(X))
+  
+  ERA5_snow <- ERA5_snow %>%
+    dplyr::select(Latitude, Longitude, sd_updated, year) %>%
+    dplyr::rename("sd" = "sd_updated",
+                  "sd_year" = "year")
+  
+} else {
+  ERA5_snow <- read.csv(paste0(user, "/Documents/R_Scripts/Packages/snow/data/SWEmax_dataset/", file, "_combined_max_snow.csv")) %>%
+    dplyr::select(-c(X)) 
+  
+  #pivot dataframe
+  ERA5_snow <- ERA5_snow %>%
+    tidyr::pivot_longer(
+      cols = dplyr::starts_with("Snow_"),
+      names_to = "sd_year",
+      names_prefix = "Snow_",
+      values_to = "sd"
+    ) %>%
+    dplyr::rename(
+      Latitude = lat,
+      Longitude = lon
+    )
+  
+}
 
-#pivot dataframe
-ERA5_snow <- ERA5_snow %>%
-  tidyr::pivot_longer(
-    cols = dplyr::starts_with("Snow_"),
-    names_to = "sd_year",
-    names_prefix = "Snow_",
-    values_to = "sd"
-  ) %>%
-  dplyr::rename(
-    Latitude = lat,
-    Longitude = lon
-  )
-
-#filter out glaciers and negative values
+#select certain columns
 ERA5_snow <- ERA5_snow %>%
   dplyr::select(Latitude, Longitude, sd, sd_year)
 
@@ -137,7 +152,7 @@ sd_values_sf <- sd_values_sf %>%
   dplyr::mutate(
     Bin = cut(
       per_norm,
-      breaks = c(0, 50, 70, 90, 110, 130, 150, 500), 
+      breaks = c(0, 50, 70, 90, 110, 130, 150, 10000), 
       include.lowest = T,
       labels = c("< 50%", "51 - 70%", "71 - 90%", "91 - 110%", 
                  "111 - 130%", "131 - 150%", "> 151%"))
@@ -181,14 +196,14 @@ if (manual_sites == TRUE){
                      is.na(density)|density > ldensity,
                      surface_type %in% surface,
                      activity %in% act) %>%
-      dplyr::filter(dplyr::n_distinct(year)>min_year)%>%
+      #dplyr::filter(dplyr::n_distinct(year)>min_year)%>%
       dplyr::group_by (year, surface_type) %>%
       dplyr::reframe(meanswe = mean(swe_cm, na.rm=TRUE),
                      Site_name = sample(i),
                      meandensity = mean(density, na.rm=TRUE),
                      meandepth = mean(snow_depth_cm, na.rm=T)) %>%
       dplyr::group_by(Site_name) %>%
-      dplyr::mutate(sitemeanswe = mean(meanswe, na.rm=T)) %>%
+      dplyr::mutate(sitemeanswe = mean(meanswe[year!=current_year], na.rm=T)) %>%
       dplyr::ungroup()
     
     
@@ -221,10 +236,10 @@ if (manual_sites == TRUE){
       dplyr::filter(year >= start_year,
                     year <= end_year) %>%
       dplyr::mutate(no_years = dplyr::n_distinct(year)) %>%
-      dplyr::filter(no_years > min_year) %>%
+      #dplyr::filter(no_years > min_year) %>%
       dplyr::select(site, year, swe_cm, no_years, elevation) %>%
       dplyr::group_by(site) %>%
-      dplyr::mutate(sitemeanswe = mean(swe_cm, na.rm=T)) %>%
+      dplyr::mutate(sitemeanswe = mean(swe_cm[year!=current_year], na.rm=T)) %>%
       dplyr::ungroup()
     
     canswe <- unique(canswe)
@@ -285,7 +300,7 @@ if (manual_sites == TRUE){
     
     # Create bins for mapping
     MT$Percent_Normal_Bin <- cut(MT$pernorm, 
-                                 breaks = c(0, 50, 70, 90, 110, 130, 150, 500), 
+                                 breaks = c(0, 50, 70, 90, 110, 130, 150, 10000), 
                                  include.lowest = T,
                                  labels = c("<50%", "51 - 70%", "71 - 90%", "91 - 110%", 
                                             "111 - 130%", "131 - 150%", "> 151%"))
@@ -321,7 +336,7 @@ if (manual_sites == TRUE){
 map
 
 if(save == T){
-  htmlwidgets::saveWidget(map, file = paste0("map_MRB_", file, ".html"), selfcontained = TRUE)
-  webshot::webshot(paste0("map_MRB_", file, ".html"), paste0("map_MRB_", file, ".png"), delay = 20,  vwidth = 1000, vheight = 800, zoom = 1)
+  htmlwidgets::saveWidget(map, file = paste0("map_MRB_mo", file, ".html"), selfcontained = TRUE)
+  webshot::webshot(paste0("map_MRB_mo", file, ".html"), paste0("map_MRB_mo", file, ".png"), delay = 20,  vwidth = 1000, vheight = 800, zoom = 1)
 }
    

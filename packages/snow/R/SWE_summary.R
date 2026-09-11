@@ -3,12 +3,12 @@
 user <- paste0("C:/Users/", tolower(Sys.getenv("USERNAME")))
 
 #bring in ss data (as GNWT employee)
-source(paste0(user, "Documents/R_Scripts/Packages/snow/R/R_oracle_connect.R"))
+source(paste0(user, "/Documents/R_Scripts/Packages/snow/R/R_oracle_connect.R"))
 
 # for non-GNWT users, download data (point_data.csv and sites.csv) from https://doi.org/10.46887/2025-005
 # or use data from the /data folder of this package
-md_3 <- readRDS(paste0(user,"/Documents/R_Scripts/Packages/snow/data/md_3.rds"))
-sites <- readRDS(paste0(user,"/Documents/R_Scripts/Packages/snow/data/sites.rds"))
+#md_3 <- readRDS(paste0(user,"/Documents/R_Scripts/Packages/snow/data/md_3.rds"))
+#sites <- readRDS(paste0(user,"/Documents/R_Scripts/Packages/snow/data/sites.rds"))
 
 #other req functions:
 #opposite of %in%:
@@ -64,7 +64,7 @@ SWEsummary <- function(data,
                           meanSWE_allyears = round(mean(yearlySWE[year<curmaxyear], na.rm=TRUE)*10, 2),
                           pernorm = ((meanSWE_cur/meanSWE01_20)*100),
                           pernorm_allyrs = ((meanSWE_cur/meanSWE_allyears)*100),
-                          rank2024 = (rank[year==curmaxyear]),
+                          rank2026 = (rank[year==curmaxyear]),
                           Long = mean(long),
                           Lat = mean(lat))
      
@@ -79,7 +79,7 @@ SWEsummary(data = md_3,
            surface="upland", 
            minyear=2000, 
            maxyear=2021,
-           curmaxyear=2025,
+           curmaxyear=2026,
            flags = c("Y", "HS", "Sk", "P", "Sk_2"),
            ldensity = 0.1,
            act="A",

@@ -27,7 +27,7 @@ savepath <- paste0(user, "/Documents/NT_Hydrology/Figures")
 
 #bring in data
 #ERA5-Land
-era5data <- read.csv(paste0(user, "/Documents/R_Scripts/Packages/snow/data/trendresults_serialautocorr_hourly_95_24_MRB.csv"))
+era5data <- read.csv(paste0(user, "/Documents/R_Scripts/Packages/snow/data/trendresults_serialautocorr_hourly_95_25_MRB.csv"))
 
 # Load NWT manual survey data (sites)
 # Can only use this as a GNWT employee

@@ -11,6 +11,8 @@
 # 4. Create comparison maps
 # =============================================================================
 
+library(dplyr)
+
 # Specify pathways
 user <- paste0("C:/Users/", tolower(Sys.getenv("USERNAME")))
 savepath <- paste0(user, "/Documents/R_Scripts/Packages/snow/data/")
@@ -85,19 +87,22 @@ lat_max <- 80
 long_min <- -140
 long_max <- -95
 
-# Analysis settings
+# Analysis/mapping settings
 Mack_basin <- TRUE
 Mack_basin_outline <- TRUE
 NWT_border <- TRUE
 save <- TRUE
 significantonly <- FALSE
 comparemanual <- TRUE
+NWT_clip <- TRUE
+normalized <- FALSE
+map_exclude_sites <- c("FORT SMITH A", "NORMAN WELLS A")
 
 # Data parameters
 data <- md_3
 start_year <- 1995
 end_year <- 2025
-min_year <- (31) * 0.75
+min_year <- abs(start_year - end_year) * 0.75
 p.value <- 0.05
 exclude_sites <- NA
 
@@ -118,7 +123,7 @@ ldensity <- 0.1
 # Load ERA5-Land snow data
 # must run ERA5_spring_snow_analysis.R first to create the spring max snow depth dataset
 
-ERA5_snow <- read.csv(paste0(user, "/Documents/R_Scripts/Packages/snow/ERA5_updatedfeb_may.csv")) %>%
+ERA5_snow <- read.csv(paste0(user, "/Documents/R_Scripts/Packages/snow/data/SWEmax_dataset/ERA5_updatedfeb_may.csv")) %>%
   dplyr::select(-c(X))
 
 ERA5_snow <- ERA5_snow %>%
@@ -155,6 +160,8 @@ ERA5_snow <- ERA5_snow %>%
       max_snow <- ERA5_snow %>%
         dplyr::filter(Latitude == lat,
                       Longitude == lon)
+      
+      max_snow <- max_snow %>% dplyr::filter(!is.na(sd))
 
         if (length(max_snow$sd) == 0) {
           next  # Skip if no valid indices for this lat/lon
@@ -235,20 +242,21 @@ ERA5_snow <- ERA5_snow %>%
 
 
   #option to save and then bring in trend_results locally
-  write.csv(trend_results, paste0(savepath, "trendresults_serialautocorr_hourly_95_24_MRB.csv"))
-  write.csv(autocorr_stats, paste0(savepath, "autocorr_stats_hourly_95_24_MRB.csv"))
-  write.csv(autocorr_summary, paste0(savepath, "autocorr_summary_hourly_95_24_MRB.csv"))
+  write.csv(trend_results, paste0(savepath, "trendresults_serialautocorr_hourly_60_25_MRB.csv"))
+  write.csv(autocorr_stats, paste0(savepath, "autocorr_stats_hourly_60_25_MRB.csv"))
+  write.csv(autocorr_summary, paste0(savepath, "autocorr_summary_hourly_60_25_MRB.csv"))
   
  
   ##################################################################################################################################
   
   #bringing in csv files from lines above
-  trend_results <- read.csv(paste0(savepath, "trendresults_serialautocorr_hourly_95_24_MRB.csv"))
-  autocorr_stats <- read.csv(paste0(savepath, "autocorr_stats_hourly_95_24_MRB.csv"))
-  autocorr_summary <- read.csv(paste0(savepath, "autocorr_summary_hourly_95_24_MRB.csv"))
+  trend_results <- read.csv(paste0(savepath, "trendresults_serialautocorr_hourly_95_25_nwtsmall.csv"))
+  autocorr_stats <- read.csv(paste0(savepath, "autocorr_stats_hourly_95_25_nwtsmall.csv"))
+  autocorr_summary <- read.csv(paste0(savepath, "autocorr_summary_hourly_95_25_nwtsmall.csv"))
   
   trend_results <- trend_results %>%
-    dplyr::select("Longitude", "Latitude", "Tau", "P_value", "Sen_slope", "meanmaxswe")
+    dplyr::select("Longitude", "Latitude", "Tau", "P_value", "Sen_slope", "meanmaxswe") %>%
+    dplyr::mutate(NormSen_slope = (Sen_slope / (meanmaxswe * 1000)) * 100)
   
   #Define projection
   proj <- '+proj=longlat +datum=WGS84'
@@ -261,7 +269,16 @@ ERA5_snow <- ERA5_snow %>%
   #   trend_sf <- trend_sf[trend_sf$P_value < 0.05, ]
   # }
   
-  if(Mack_basin == T) {
+  # if(NWT_clip == T) {
+  #   NWT <- sf::st_read(paste0(user,
+  #                             "/Documents/R_Scripts/Packages/snow/data/Shapefiles/NWT_ENR_BND_FND.shp"),
+  #                      layer = "NWT_ENR_BND_FND")
+  #   NWT <- sf::st_transform(NWT, sp::CRS(proj)) # Change the projection
+  #   NWT <- sf::st_zm(NWT)
+  #   trend_sf <- sf::st_intersection(trend_sf, NWT)
+  # }
+  
+  if(Mack_basin == T && NWT_clip == F) {
     Mack <- sf::st_read(paste0(user, "/Documents/R_Scripts/Packages/snow/data/Shapefiles/MackenzieRiverBasin_FDA.shp"),
                         layer = "MackenzieRiverBasin_FDA")
     Mack <- sf::st_transform(Mack, sp::CRS(proj)) # Change the projection
@@ -281,8 +298,8 @@ ERA5_snow <- ERA5_snow %>%
       Bin = cut(
         mm_SWE_per_decade,
         breaks = c(-10000, -20, -10, -5, -3, 3, 5, 10, 20, 10000),
-        labels = c("<(-20)", "(-20) - (-10)", "(-10) - (-5)", "(-5) - (-3)", 
-                   "(-3) - 3", "3 - 5", "5 - 10", "10 - 20", "> 20"),
+        labels = c("<(-20)", "(-20) - (-10)", "(-10) - (-5)", "(-5) - (-3)", "((-3) - 3)",
+                   "3 - 5", "5 - 10", "10 - 20", "> 20"),
         include.lowest = TRUE
       )
     )
@@ -512,7 +529,9 @@ ERA5_snow <- ERA5_snow %>%
     
     MapTable<-cbind(SiteTable, longitude, latitude, elevation)
     MT = rbind(MapTable, MapTable_canswe) %>%
-      dplyr::filter(is.na(longitude)==F)
+      dplyr::filter(is.na(longitude)==F) %>%
+      dplyr::mutate(NormMagnitude = (Magnitude / (sitemeanswe * 10)) * 100) %>%
+      dplyr::filter(Site_name %!in% map_exclude_sites)
     
     # #filter significant results only
     if (significantonly == T){
@@ -523,13 +542,22 @@ ERA5_snow <- ERA5_snow %>%
     # Convert MT results to an sf object
     MT <- sf::st_as_sf(MT, coords = c("longitude", "latitude"), crs = proj)
     
-    if(Mack_basin == T) {
+    if(Mack_basin == T && NWT_clip == F) {
       Mack <- sf::st_read(paste0(user, "/Documents/R_Scripts/Packages/snow/data/Shapefiles/MackenzieRiverBasin_FDA.shp"),
                           layer = "MackenzieRiverBasin_FDA")
       Mack <- sf::st_transform(Mack, sp::CRS(proj)) # Change the projection
       Mack <- sf::st_zm(Mack)
       MT <- sf::st_intersection(MT, Mack)
     } 
+    
+    if(NWT_clip == T){
+      NWT <- sf::st_read(paste0(user,
+                                "/Documents/R_Scripts/Packages/snow/data/Shapefiles/NWT_ENR_BND_FND.shp"),
+                         layer = "NWT_ENR_BND_FND")
+      NWT <- sf::st_transform(NWT, sp::CRS(proj)) # Change the projection
+      NWT <- sf::st_zm(NWT)
+      MT <- sf::st_intersection(MT, NWT)
+    }
     
     #option to save MT for ERA5_snowcomparison_ER.R
     # Extract coordinates and convert back to a regular table
@@ -541,16 +569,22 @@ ERA5_snow <- ERA5_snow %>%
         Latitude  = coords[, "Y"]
       ) %>%
       dplyr::select(
-        Site_name, Magnitude, `p.value`, Significance,
-        `Years.of.Record`, Method, elevation,
-        Latitude, Longitude, sitemeanswe
+        Site_name, Magnitude, p.value, Significance,
+        Years.of.Record, Method, elevation,
+        Latitude, Longitude, sitemeanswe, NormMagnitude
       ) %>%
       sf::st_drop_geometry()
     
     #write.csv(MT_tbl, paste0(user, "/Documents/R_Scripts/Packages/snow/data/MRB_snowsurvey_trends.csv"))
+    
+    if(normalized == T){
+      trends <- trend_sf %>%
+        dplyr::select(P_value,  Bin, geometry, NormSen_slope) 
+    } else {
+      trends <- trend_sf %>%
+        dplyr::select(P_value,  Bin, geometry, mm_SWE_per_decade) #mm_SWE_per_decade used for absolute trend values 
+    }
   
-    trends <- trend_sf %>%
-      dplyr::select(P_value, mm_SWE_per_decade, Bin, geometry)
     
     xy <- sf::st_coordinates(trends)
     
@@ -609,9 +643,7 @@ ERA5_snow <- ERA5_snow %>%
     trends_chunked <- make_grid_chunks(trends_df, nx = 5, ny = 5)
     
     map <- leaflet::leaflet(trends_df, options = leaflet::leafletOptions(preferCanvas = F)) %>%
-      leaflet::addProviderTiles(leaflet::providers$CartoDB.PositronNoLabels) %>%
-      leaflet::fitBounds(min(trends_df$lon), min(trends_df$lat),
-                         max(trends_df$lon), max(trends_df$lat))
+      carto_tiles(style = "light_nolabels")
     
     for (id in sort(unique(trends_chunked$chunk_id))) {
       map <- add_chunk(map, dplyr::filter(trends_chunked, chunk_id == id), PerCol_gridded)
@@ -630,11 +662,19 @@ ERA5_snow <- ERA5_snow %>%
     
     #Add NWT border if desired
     if (NWT_border == T){
-    NWT <- sf::st_read(paste0(user,
-                              "/Documents/R_Scripts/Packages/snow/data/Shapefiles/NWT_ENR_BND_FND.shp"),
-                       layer = "NWT_ENR_BND_FND")
-    NWT <- sf::st_transform(NWT, sp::CRS(proj)) # Change the projection
-    NWT <- sf::st_zm(NWT)
+      #large border
+      # NWT <- sf::st_read(
+      #   dsn   = file.path(user, "Documents", "Shapefiles", "geo_political_region_2.shp"),
+      #   layer = "geo_political_region_2",
+      #   query = "SELECT * FROM geo_political_region_2 WHERE juri_en = 'Northwest Territories'",
+      #   quiet = TRUE
+      # )
+      
+      NWT <- sf::st_read((paste0(user,
+                         "/Documents/R_Scripts/Packages/snow/data/Shapefiles/NWT_ENR_BND_FND.shp")),
+                         layer = "NWT_ENR_BND_FND")
+      NWT <- sf::st_make_valid(NWT)
+      NWT <- sf::st_transform(NWT, sp::CRS(proj)) # Change the projection
     map <- map  %>%
       leaflet::addPolygons(data = NWT, color = "black", weight = 1, opacity = 0.7, fillOpacity = 0)
     }
@@ -645,18 +685,21 @@ ERA5_snow <- ERA5_snow %>%
         leaflet::addPolygons(data = Mack, color = "grey", weight = 2, opacity = 1, fillOpacity = 0, group = "NWT Border")
     }
     
-    legend_numbers <-  c(-1200, -20, -10, -5, -3, 3, 5, 10, 20, 1200)
-    legend_labels <-  c("<(-20)", "(-20) - (-10)", "(-10) - (-5)", "(-5) - (-3)", "(-3) - 3", "3 - 5", "5 - 10", "10 - 20", ">20")
+    legend_numbers <- c(-10000, -20, -10, -5, -3, 3, 5, 10, 20, 10000)
+    legend_labels <-  c("<(-20)", "(-20) - (-10)", "(-10) - (-5)", "(-5) - (-3)", "((-3) - 3)", 
+                        "3 - 5", "5 - 10", "10 - 20", "> 20")
     
-    MT$Bin <- cut(MT$Magnitude, 
-                  legend_numbers, 
-                  include.lowest = T,
-                  labels = legend_labels)
+    if(normalized == T){
+      MT$Bin <- cut(MT$NormMagnitude, legend_numbers, include.lowest = T, labels = legend_labels)
+      } else {
+       MT$Bin <- cut(MT$Magnitude, legend_numbers, include.lowest = T,labels = legend_labels)}
     
     PerCol <- leaflet::colorFactor(palette = "RdYlBu", MT$Bin, na.color = NA)
     
     map = map %>%
       leaflet::addCircleMarkers(data = MT, 
+                                lng = MT$lon,
+                                lat = MT$lat,
                                 fillColor = ~PerCol(Bin), #
                                 fillOpacity = ifelse(MT$Significance == "yes", 1, 1),
                                 label = MT$Site_name,
@@ -666,23 +709,21 @@ ERA5_snow <- ERA5_snow %>%
                                 popup =~ paste0("Site name: ", MT$Site_name, "<br>",
                                                 "Years of data between ", paste(start_year), "-", paste(end_year), ": ", MT$Years.of.Record, "<br>",
                                                 "Magnitude of change: ", round(MT$Magnitude, 2), " mm SWE/decade", "<br>",
+                                                "Normalized Magnitude of change: ", round(MT$NormMagnitude, 2), " mm SWE/decade", "<br>",
                                                 "p value: ", MT$p.value, "<br>",
                                                 "Method: ", MT$Method, "<br>",
-                                                "Elevation: ", MT$elevation)) #%>%
+                                                "Elevation: ", MT$elevation))
       
-     #Legend commented out for recreation in CorelDraw
-      # leaflet::addLegend(
-      #   position = "bottomleft",
-      #   pal = PerCol,
-      #   values = MT$Bin,
-      #   title = paste0("Change in SWE", "<br>",
-      #                  "(mm/decade)"))
+    #Legend commented out for recreation in CorelDraw
+    # map = map  
+    # leaflet::addLegend(map = map,
+    #     position = "bottomleft",
+    #     pal = PerCol,
+    #     values = trend_sf$Bin,
+    #     title = paste0("Change in SWE", "<br>",
+    #                    "(mm/decade)"))
     
-    
-    
-  
-  
-  
+
   map
   
   if(save == T){
@@ -694,9 +735,9 @@ ERA5_snow <- ERA5_snow %>%
   }
   
 
-# Create snow site map - Figure 1
+# Create snow site map (MRB)
 map <- leaflet::leaflet() %>%
-  leaflet::addProviderTiles(leaflet::providers$CartoDB.PositronNoLabels)
+  carto_tiles(style = "light_nolabels")
 
 #Add basin outlines 
 
@@ -870,5 +911,239 @@ if(save == T){
                    delay = 5, vwidth = 1000, vheight = 1000, zoom = 3)
 }
 
+# Create snow site map - Figure 1 (NWT only)
+map <- leaflet::leaflet() %>%
+  carto_tiles(style = "light_nolabels")
 
-##################################################################################################
+#Add basin outlines 
+
+#bring in other basin shapefiles
+#NWT border shapefile
+NWT <- sf::st_read(paste0("C:/Users/",
+                          tolower(Sys.getenv("USERNAME")),
+                          "/Documents/R_Scripts/Packages/snow/data/Shapefiles/NWT_ENR_BND_FND.shp"),
+                   layer = "NWT_ENR_BND_FND")
+NWT <- sf::st_transform(NWT, sp::CRS(proj)) # Change the projection
+NWT <- sf::st_zm(NWT)
+
+#Yellowknife river basin
+YK <- sf::st_read(paste0(user, "/Documents/R_Scripts/Packages/snow/data/Shapefiles/07SB002_DrainageBasin_BassinDeDrainage.shp"),
+                  layer = "07SB002_DrainageBasin_BassinDeDrainage")
+YK <- sf::st_transform(YK, proj) # Change the projection
+YK <- sf::st_zm(YK)
+YK <- sf::st_make_valid(YK)
+#YK <- sf::st_intersection(YK, NWT)
+
+#Snare river basin
+
+Snare <- sf::st_read(paste0(user, "/Documents/R_Scripts/Packages/snow/data/Shapefiles/07SA003_DrainageBasin_BassinDeDrainage.shp"),
+                     layer = "07SA003_DrainageBasin_BassinDeDrainage")
+Snare <- sf::st_transform(Snare, proj) # Change the projection
+Snare <- sf::st_zm(Snare)
+Snare <- sf::st_make_valid(Snare)
+#Snare <- sf::st_intersection(Snare, NWT)
+
+#Taltson
+
+Taltson <- sf::st_read(paste0(user, "/Documents/R_Scripts/Packages/snow/data/Shapefiles/07QA001_DrainageBasin_BassinDeDrainage.shp"),
+                       layer = "07QA001_DrainageBasin_BassinDeDrainage")
+Taltson <- sf::st_transform(Taltson, proj) # Change the projection
+Taltson <- sf::st_zm(Taltson)
+Taltson <- sf::st_make_valid(Taltson)
+#Taltson <- sf::st_intersection(Taltson, NWT)
+
+#Peace
+
+Peace <- sf::st_read(paste0(user, "/Documents/R_Scripts/Packages/snow/data/Shapefiles/07KC005_DrainageBasin_BassinDeDrainage.shp"),
+                     layer = "07KC005_DrainageBasin_BassinDeDrainage")
+Peace <- sf::st_transform(Peace, proj) # Change the projection
+Peace <- sf::st_zm(Peace)
+Peace <- sf::st_make_valid(Peace)
+#Peace <- sf::st_intersection(Peace, NWT)
+
+#Athabasca 
+
+AB <- sf::st_read(paste0(user, "/Documents/R_Scripts/Packages/snow/data/Shapefiles/07DD010_DrainageBasin_BassinDeDrainage.shp"),
+                  layer = "07DD010_DrainageBasin_BassinDeDrainage")
+AB <- sf::st_transform(AB, proj) # Change the projection
+AB <- sf::st_zm(AB)
+AB <- sf::st_make_valid(AB)
+AB <- sf::st_intersection(AB, NWT)
+
+#Liard
+
+Liard <- sf::st_read(paste0(user, "/Documents/R_Scripts/Packages/snow/data/Shapefiles/10ED002_DrainageBasin_BassinDeDrainage.shp"),
+                     layer = "10ED002_DrainageBasin_BassinDeDrainage")
+Liard <- sf::st_transform(Liard, proj) # Change the projection
+Liard <- sf::st_zm(Liard)
+Liard <- sf::st_make_valid(Liard)
+#Liard <- sf::st_intersection(Liard, NWT)
+
+#Peel
+
+Peel <- sf::st_read(paste0(user, "/Documents/R_Scripts/Packages/snow/data/Shapefiles/10MC022_DrainageBasin_BassinDeDrainage.shp"),
+                    layer = "10MC022_DrainageBasin_BassinDeDrainage")
+Peel <- sf::st_transform(Peel, proj) # Change the projection
+Peel <- sf::st_zm(Peel)
+Peel <- sf::st_make_valid(Peel)
+#Peel <- sf::st_intersection(Peel, NWT)
+
+#Hay
+
+Hay <- sf::st_read(paste0(user, "/Documents/R_Scripts/Packages/snow/data/Shapefiles/07OB001_DrainageBasin_BassinDeDrainage.shp"),
+                   layer = "07OB001_DrainageBasin_BassinDeDrainage")
+Hay <- sf::st_transform(Hay, proj) # Change the projection
+Hay <- sf::st_zm(Hay)
+Hay <- sf::st_make_valid(Hay)
+#Hay <- sf::st_intersection(Hay, NWT)
+
+#Lower Slave
+
+lower_slave <- sf::st_read(paste0(user, "/Documents/R_Scripts/Packages/snow/data/Shapefiles/lower_slave_clean.shp"),
+                           layer = "lower_slave_clean")
+lower_slave <- sf::st_transform(lower_slave, proj) # Change the projection
+lower_slave <- sf::st_zm(lower_slave)
+lower_slave <- sf::st_make_valid(lower_slave)
+#lower_slave<- sf::st_intersection(lower_slave, NWT)
+
+
+# MT <- read.csv(paste0(user, "/Documents/R_Scripts/Packages/snow/data/MRB_snowsurvey_trends.csv"))
+MT <- read.csv(paste0(user, "/Documents/R_Scripts/Packages/snow/data/pts_basin.csv")) %>%
+  dplyr::rename("Latitude"="MT_Latitude",
+                "Longitude"="MT_Longitude") %>%
+  dplyr::filter(group=="NWT")
+
+map = map %>%
+  leaflet::addPolygons(data = Hay,
+                       color = "darkgrey",
+                       fillColor = "#B79F00",
+                       weight = 1 ) %>%
+  leaflet::addPolygons(data = Snare,
+                       color = "darkgrey",
+                       fillColor = "#9590FF",
+                       weight = 1) %>%
+  leaflet::addPolygons(data = YK,
+                       color = "darkgrey",
+                       fillColor = "#FF61C3",
+                       weight = 1) %>%
+  leaflet::addPolygons(data = lower_slave,
+                       color = "darkgrey",
+                       fillColor = "#00BA38",
+                       weight = 1) %>%
+  leaflet::addPolygons(data = Peel, 
+                       color = "darkgrey",
+                       fillColor = "#00B0F6",
+                       weight = 1) %>%
+  leaflet::addPolygons(data = Liard, 
+                       color = "darkgrey",
+                       fillColor = "#7CAE00",
+                       weight = 1) %>%
+  leaflet::addPolygons(data = AB, 
+                       color = "darkgrey",
+                       fillColor = "#F8766D",
+                       weight = 1) %>%
+  leaflet::addPolygons(data = Peace, 
+                       color = "darkgrey",
+                       fillColor = "#00C1DE",
+                       weight = 1) %>%
+  leaflet::addPolygons(data = Taltson, 
+                       color = "darkgrey",
+                       fillColor = "#E76BF3",
+                       weight = 1)
+
+#Add NWT border if desired
+if (NWT_border == T){
+  NWT <- sf::st_read(paste0("C:/Users/",
+                            tolower(Sys.getenv("USERNAME")),
+                            "/Documents/R_Scripts/Packages/snow/data/Shapefiles/NWT_ENR_BND_FND.shp"),
+                     layer = "NWT_ENR_BND_FND")
+  NWT <- sf::st_transform(NWT, sp::CRS(proj)) # Change the projection
+  NWT <- sf::st_zm(NWT)
+  map <- map  %>%
+    leaflet::addPolygons(data = NWT, color = "black", weight = 1, opacity = 0.7, fillOpacity = 0, stroke = T )
+}
+
+#Add colouring for basins - same as ggplot Figure 3
+basin_cols <- c(
+  "Athabasca"      = "#F8766D", 
+  "Great Slave Lake - other"    = "#D89000",  
+  "Hay"            = "#B79F00",  
+  "Liard"          = "#7CAE00",  
+  "Lower Slave"    = "#00BA38", 
+  "Mackenzie River main stem"= "#00BFC4",  
+  "Peace"          = "#00C1DE",  
+  "Peel"           = "#00B0F6",  
+  "Snare"          = "#9590FF",  
+  "Taltson"        = "#E76BF3", 
+  "Yellowknife"    = "#FF61C3"   
+)
+
+pal_basin <- leaflet::colorFactor(
+  palette  = basin_cols,
+  domain   = names(basin_cols),
+  na.color = "#BDBDBD"
+)
+
+map = map %>%
+  leaflet::addCircleMarkers(data = MT, 
+                            fillColor = ~pal_basin(basin), #
+                            lat = MT$Latitude,
+                            lng = MT$Longitude,
+                            fillOpacity = ifelse(MT$Significance == "yes", 1, 1),
+                            label = MT$Site_name,
+                            radius = 7,
+                            weight = ifelse(MT$Significance == "yes", 1, 1),
+                            color = "black",
+                            popup =~ paste0("Site name: ", MT$Site_name, "<br>",
+                                            "Years of data between ", paste(start_year), "-", paste(end_year), ": ", MT$Years.of.Record, "<br>",
+                                            "Magnitude of change: ", round(MT$Magnitude, 2), " mm SWE/decade", "<br>",
+                                            "p value: ", MT$p.value, "<br>",
+                                            "Method: ", MT$Method, "<br>",
+                                            "Latitude: ", MT$Latitude, "<br>",
+                                            "Longitude: ", MT$Longitude, "<br>",
+                                            "Elevation: ", MT$elevation)) %>%
+  leaflet::addScaleBar(position = "bottomright")
+
+map 
+
+if(save == T){
+  Sys.setenv(PATH = paste0(user, "/Documents/Modelling/phantomjs/phantomjs/bin"))
+  htmlwidgets::saveWidget(map, file = paste0(savepath, "/nwtswesitemap.html"), selfcontained = TRUE)
+  webshot::webshot(paste0(savepath, "/nwtswesitemap.html"), 
+                   paste0(savepath, "/nwtswesitemap_", ".png"), 
+                   delay = 5, vwidth = 1000, vheight = 1000, zoom = 3)
+}
+
+
+#create inset map for SOE trends
+
+map <- leaflet::leaflet() %>%
+  carto_tiles(style = "light_nolabels")
+
+NWT <- sf::st_read(
+  sf::st_read((paste0(user,
+                      "/Documents/R_Scripts/Packages/snow/data/Shapefiles/NWT_ENR_BND_FND.shp")),
+              layer = "NWT_ENR_BND_FND")
+  
+  # dsn   = file.path(user, "Documents", "Shapefiles", "geo_political_region_2.shp"),
+  # layer = "geo_political_region_2",
+  # query = "SELECT * FROM geo_political_region_2 WHERE juri_en = 'Northwest Territories'",
+  # quiet = TRUE
+)
+NWT <- sf::st_make_valid(NWT)
+NWT <- sf::st_transform(NWT, sp::CRS(proj)) # Change the projection
+
+map <- map %>%
+  leaflet::addPolygons(data = NWT, color = "black", weight = 2, opacity = 1, fillOpacity = 0, group = "NWT Border", stroke = T)
+
+map
+
+if(save == T){
+  Sys.setenv(PATH = paste0(user, "/Documents/Modelling/phantomjs/phantomjs/bin"))
+  htmlwidgets::saveWidget(map, file = paste0(savepath, "/sweinsetmap.html"), selfcontained = TRUE)
+  webshot::webshot(paste0(savepath, "/sweinsetmap.html"), 
+                   paste0(savepath, "/sweinsetmap_", ".png"), 
+                   delay = 5, vwidth = 1500, vheight = 1500, zoom = 4)
+}
+
+##################################################################################################
