@@ -1,4 +1,7 @@
 #TB Hydroclimate plots
+#Run tb_source_functions.R and the setup lines at the top of TB_Functions.R first. See README.md.
+
+report_year <- 2025 # year the technical report is for - change this each year
 
 save_path <- paste0(file_path, "Figures and Tables/")
 
@@ -7,10 +10,10 @@ save_path <- paste0(file_path, "Figures and Tables/")
 hydro_plot_dayofyear(
   station_number = "07OB001",
   parameter = "flow",
-  select_years = c(2021),
+  select_years = c(report_year),
   after_bennett = FALSE,
   historic_min = NA,
-  historic_max = 2021,
+  historic_max = report_year - 1,
   water_year_start = 1,
   historic = TRUE,
   log_scale = FALSE,
@@ -39,11 +42,11 @@ hydro_plot_dayofyear(
 
 #Cumulative precip/rain plots - example usage for 2021 report
 clim_plot_dayofyear(
-    site = "Fort Smith",
-    parameter = "Precipitation",
-    start_year = 1953,
-    end_year = 2020,
-    select_year = 2021,
+    site = "Hay River",
+    parameter = "rain",
+    start_year = 1950,
+    end_year = report_year - 1,
+    select_year = report_year,
     cumulative = T,
     plot_width = 18,
     plot_height = 11,
@@ -55,8 +58,8 @@ clim_plot_dayofyear(
   site = "High Level",
   parameter = "rain",
   start_year = 1967,
-  end_year = 2020,
-  select_year = 2021,
+  end_year = report_year - 1,
+  select_year = report_year,
   cumulative = T,
   plot_width = 12,
   plot_height = 11,
@@ -67,9 +70,9 @@ clim_plot_dayofyear(
 clim_plot_dayofyear(
   site = "Fort Nelson",
   parameter = "rain",
-  start_year = 1967,
-  end_year = 2020,
-  select_year = 2021,
+  start_year = 1950,
+  end_year = report_year - 1,
+  select_year = report_year,
   cumulative = T,
   plot_width = 12,
   plot_height = 11,
@@ -83,9 +86,9 @@ clim_plot_dayofyear(
 clim_plot_dayofyear(
   site = "Hay River",
   parameter = "temp",
-  start_year = 1953,
-  end_year = 2020,
-  select_year = 2021,
+  start_year = 1950,
+  end_year = report_year - 1,
+  select_year = report_year,
   cumulative = F,
   plot_width = 18,
   plot_height = 11
@@ -94,9 +97,9 @@ clim_plot_dayofyear(
 clim_plot_dayofyear(
   site = "High Level",
   parameter = "temp",
-  start_year = 1967,
-  end_year = 2020,
-  select_year = 2021,
+  start_year = 1950,
+  end_year = report_year - 1,
+  select_year = report_year,
   cumulative = F,
   plot_width = 18,
   plot_height = 11
@@ -105,9 +108,9 @@ clim_plot_dayofyear(
 clim_plot_dayofyear(
   site = "Fort Nelson",
   parameter = "temp",
-  start_year = 1967,
-  end_year = 2020,
-  select_year = 2021,
+  start_year = 1950,
+  end_year = report_year - 1,
+  select_year = report_year,
   cumulative = F,
   plot_width = 18,
   plot_height = 11
@@ -131,7 +134,7 @@ for(i in Communities) {
     site = i,
     parameter = "mean_temp",
     start_year = 1950,
-    select_year = 2021,
+    select_year = report_year,
     water_year_start = 1,
     max_missing_days = 10,
     water_year_end = 12,
@@ -148,7 +151,7 @@ for(i in Communities) {
 tb_watersheds <- c("07OB001",
                    "07NB001")
 YieldsTB = YieldsTable(start_year = 1960,
-                     end_year = 2025,
+                     end_year = report_year,
                      data = tb_watersheds,
                      DOR = 350,
                      exclude_years = NA)
@@ -164,10 +167,10 @@ SOEfigs_bystn(data = YieldsTB, station_number = "07OB001", start_year = 1963, p.
 hydro_plot_dayofyear(
   station_number = "07NB001",
   parameter = "flow",
-  select_years = c(2021),
+  select_years = c(report_year),
   after_bennett = FALSE,
   historic_min = NA,
-  historic_max = 2021,
+  historic_max = report_year - 1,
   water_year_start = 1,
   historic = TRUE,
   log_scale = FALSE,
@@ -198,9 +201,9 @@ hydro_plot_dayofyear(
 clim_plot_dayofyear(
   site = "Fort Smith",
   parameter = "rain",
-  start_year = 1953,
-  end_year = 2021,
-  select_year = 2024,
+  start_year = 1950,
+  end_year = report_year - 1,
+  select_year = report_year,
   cumulative = T,
   plot_width = 12,
   plot_height = 11,
@@ -211,9 +214,9 @@ clim_plot_dayofyear(
 clim_plot_dayofyear(
   site = "Fort Chipewyan",
   parameter = "rain",
-  start_year = 1967,
-  end_year = 2021,
-  select_year = 2024,
+  start_year = 1950,
+  end_year = report_year - 1,
+  select_year = report_year,
   cumulative = T,
   plot_width = 12,
   plot_height = 11,
@@ -224,9 +227,9 @@ clim_plot_dayofyear(
 clim_plot_dayofyear(
   site = "Mackenzie",
   parameter = "rain",
-  start_year = 1971,
-  end_year = 2021,
-  select_year = 2024,
+  start_year = 1973,
+  end_year = report_year - 1,
+  select_year = report_year,
   cumulative = T,
   plot_width = 12,
   plot_height = 11,
@@ -237,9 +240,9 @@ clim_plot_dayofyear(
 clim_plot_dayofyear(
   site = "Peace River",
   parameter = "rain",
-  start_year = 1955,
-  end_year = 2021,
-  select_year = 2024,
+  start_year = 1950,
+  end_year = report_year - 1,
+  select_year = report_year,
   cumulative = T,
   plot_width = 12,
   plot_height = 11,
@@ -254,7 +257,7 @@ df <- hydro_calc_daily(station = "07OB001",
                        parameter = "flow",
                        water_year_start = 1,
                        start_date = "1964-01-01",
-                       end_date = "2021-12-31")
+                       end_date = paste0(report_year, "-12-31"))
 
 df <- df %>%
   # dplyr::filter(Month > 4,
@@ -276,7 +279,7 @@ df$cum_value <- df$cum_value * 86400 #look at df here to get total discharge. Di
 quantile(df$cum_value, 0.50, na.rm=T) #This gives you what a normal year would be, based on the median
 
 #what is the percent of normal of the current year's cumulative discharge?
-Cumulative_flows_current <- df$cum_value[df$CalendarYear == lubridate::year("2021-12-31")] #this date is from end_date on line 257
+Cumulative_flows_current <- df$cum_value[df$CalendarYear == report_year] 
 Cumulative_flows_mean <- mean(df$cum_value, na.rm=T)
 Cumulative_flows_current/Cumulative_flows_mean * 100
 
@@ -287,8 +290,8 @@ plot(df$cum_value~df$CalendarYear) #this shows you total annual flows over time
 df <- hydro_calc_daily(station = "07OB001",
                        parameter = "flow",
                        water_year_start = 1,
-                       start_date = "1964-01-01",
-                       end_date = "2021-12-31")
+                       start_date = "1900-01-01",
+                       end_date = paste0(report_year, "-12-31"))
 
 df <- df %>%
   # dplyr::filter(Month > 4,
@@ -306,7 +309,7 @@ df <- hydro_calc_daily(station = "07OB001",
                        parameter = "flow",
                        water_year_start = 1,
                        start_date = "1964-01-01",
-                       end_date = "2021-12-31")
+                       end_date = paste0(report_year, "-12-31"))
 
 df <- df %>%
   # dplyr::filter(Month > 4,
@@ -328,10 +331,10 @@ mean_annual_flow <- mean(df$mean_value, na.rm=T)
 
 plot <- hydro_plot_dayofyear_cumulative(station_number = "07OB001",
                                 parameter = "flow",
-                                select_year = c(2021),
+                                select_year = c(report_year),
                                 after_bennett = FALSE,
                                 historic_min = NA,
-                                historic_max = 2021,
+                                historic_max = report_year - 1,
                                 water_year_start = 1,
                                 historic = TRUE,
                                 log_scale = FALSE,
@@ -360,6 +363,43 @@ plot <- hydro_plot_dayofyear_cumulative(station_number = "07OB001",
                                 interactive = T,
                                 y_axis_title = "Discharge (m3 s-1)")
 
+plot <- hydro_plot_dayofyear(station_number = "07NB001",
+                                        parameter = "flow",
+                                        select_year = c(report_year),
+                                        after_bennett = TRUE,
+                                        historic_min = NA,
+                                        historic_max = report_year - 1,
+                                        water_year_start = 1,
+                                        historic = TRUE,
+                                        log_scale = FALSE,
+                                        start_month = 01,
+                                        start_day = 01,
+                                        end_month = 12,
+                                        end_day = 31,
+                                        line_colours = c("dodgerblue",
+                                                         "blue4",
+                                                         "green4",
+                                                         "red4",
+                                                         "purple4",
+                                                         "yellow4"),
+                                        legend_position = "top",
+                                        line_size = 0.5,
+                                        point_size = 0,
+                                        legend_text_size = 8,
+                                        y_min = NA,
+                                        y_max = NA,
+                                        save = TRUE,
+                                        plot_width = 18,
+                                        plot_height = 11,
+                                        dpi = 900,
+                                        file_name = "Default hydrometric plot",
+                                        extension = "png")
+plot <- plot +
+  ggplot2::labs(
+    x = "Day of Year",
+    y = "Discharge (m\u00b3/s)"   # m³/s as a single string
+  )
+
 plot<-plotly::ggplotly(plot, tooltip = c("y", "x", "colour", "ymin", "ymax", "yintercept"))
 
 plot <- plotly::plotly_build(plot)
@@ -371,7 +411,7 @@ df <- hydro_calc_daily(station = "07NB001",
                        parameter = "flow",
                        water_year_start = 1,
                        start_date = "1972-01-01",
-                       end_date = "2021-12-31")
+                       end_date = paste0(report_year, "-12-31"))
 
 df <- df %>%
   # dplyr::filter(Month > 4,
@@ -384,6 +424,7 @@ df <- df %>%
   dplyr::group_by(CalendarYear) %>%
   dplyr::summarise(cum_value = sum(Value, na.rm=T),
                    missing_days = sum(Count, na.rm=T))
+
 
 #df$cum_value <- ifelse(df$missing_days > 10, NA, df$cum_value)
 
@@ -402,7 +443,7 @@ plot(df$cum_value~df$CalendarYear) #this shows you total annual flows over time
 
 mean_annual_flow <- mean(df$cum_value, na.rm=T)
 
-current_annual_flow <- df$cum_value[df$CalendarYear == lubridate::year("2021-12-31")] #date is from line 374
+current_annual_flow <- df$cum_value[df$CalendarYear == report_year] 
 
 #percent of normal of cumulative flows
 current_annual_flow/mean_annual_flow * 100
@@ -415,10 +456,10 @@ current_annual_flow/mean_annual_flow * 100
 ############################################################################
 plot <- hydro_plot_dayofyear_cumulative(station_number = "07NB001",
                                 parameter = "flow",
-                                select_year = c(2021),
+                                select_year = c(report_year),
                                 after_bennett = TRUE,
                                 historic_min = NA,
-                                historic_max = 2020, #historic max should always be select_year - 1
+                                historic_max = report_year - 1, #historic max should always be select_year - 1
                                 water_year_start = 1,
                                 historic = TRUE,
                                 log_scale = FALSE,
@@ -457,16 +498,18 @@ plot
 # Other interactive plots
 
 interactive <- clim_plot_dayofyear(
-  site = "Hay River",
-  parameter = "rain",
+  site = "Aklavik",
+  parameter = "temp",
   start_year = 1953,
-  end_year = 2020,
-  select_year = 2021,
+  end_year = 2024,
+  select_year = 2026,
   cumulative = T,
   plot_width = 12,
   plot_height = 11,
   y_min = NA,
-  y_max = 600
+  y_max = 600,
+  water_year = TRUE,
+  water_year_start = 10,
 )
 
 plot<-plotly::ggplotly(interactive, tooltip = c("y", "x", "colour", "ymin", "ymax", "yintercept"))

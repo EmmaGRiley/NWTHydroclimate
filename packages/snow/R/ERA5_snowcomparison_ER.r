@@ -25,9 +25,27 @@ source(paste0(user, "/Documents/R_Scripts/Packages/snow/R/ERA5_snowtrends_map_ho
 #set save path for figures
 savepath <- paste0(user, "/Documents/NT_Hydrology/Figures")
 
+# --- analysis scope ----------------------------------------------------------
+# "MRB" = Mackenzie River Basin extent, every snow survey site in MT
+# "NWT" = Northwest Territories extent, sites clipped to the territorial boundary
+# Matches the scope switch in ERA5_manual_SWE_bias.R so the two analyses agree
+# on what a basin or ecozone contains. Figure files are suffixed with the scope
+# so the two runs do not overwrite each other.
+scope <- "NWT"
+
+fig_suffix <- paste0("_", scope)
+
+era5_trend_file <- if (scope == "MRB") {
+  "trendresults_serialautocorr_hourly_95_25_MRB.csv"
+} else {
+  "trendresults_serialautocorr_hourly_95_25_nwtsmall.csv"
+}
+
+shp_path <- paste0(user, "/Documents/R_Scripts/Packages/snow/data/Shapefiles/")
+
 #bring in data
 #ERA5-Land
-era5data <- read.csv(paste0(user, "/Documents/R_Scripts/Packages/snow/data/trendresults_serialautocorr_hourly_95_25_MRB.csv"))
+era5data <- read.csv(paste0(user, "/Documents/R_Scripts/Packages/snow/data/", era5_trend_file))
 
 # Load NWT manual survey data (sites)
 # Can only use this as a GNWT employee
@@ -45,31 +63,56 @@ MT <- read.csv(paste0(user, "/Documents/R_Scripts/Packages/snow/data/MRB_snowsur
 MT <- MT %>%
   dplyr::select(-X)
 
+# clip the survey sites to the scope boundary, as ERA5_manual_SWE_bias.R does
+scope_layer <- if (scope == "MRB") "MackenzieRiverBasin_FDA" else "NWT_ENR_BND_FND"
+scope_poly  <- sf::st_read(paste0(shp_path, scope_layer, ".shp"), layer = scope_layer,
+                           quiet = TRUE) %>%
+  sf::st_transform(proj) %>%
+  sf::st_zm(drop = TRUE, what = "ZM") %>%
+  sf::st_make_valid()
+
+n_before_clip <- nrow(MT)
+MT <- sf::st_as_sf(MT, coords = c("Longitude", "Latitude"), crs = proj, remove = FALSE) %>%
+  sf::st_filter(scope_poly, .predicate = sf::st_intersects) %>%
+  sf::st_drop_geometry()
+cat("\nScope:", scope, "- survey sites retained:", nrow(MT), "of", n_before_clip, "\n")
+
 era5data <- era5data %>%
   dplyr::select(-X) %>%
   dplyr::rename(lat = Latitude,
                 lon = Longitude)
 
-# Match each point in data1 to the closest point in data2
-matched_data <- era5data %>%
-  dplyr::rowwise() %>%
-  dplyr::mutate(
-    closest_point = list(
-      MT %>%
-        dplyr::mutate(
-          distance = haversine_dist(
-            lat, lon,
-            dplyr::cur_data()$Latitude, dplyr::cur_data()$Longitude
-          )
-        ) %>%
-        dplyr::slice_min(distance, n = 1, with_ties = FALSE) %>%
-        dplyr::rename(
-          MT_Latitude  = Latitude,
-          MT_Longitude = Longitude
-        )
-    )
-  ) %>%
-  tidyr::unnest(closest_point)
+# Match each ERA5 cell to the closest snow survey site.
+#
+# This is the vectorised form of the original rowwise() loop, kept because that
+# version takes many minutes on ~29k cells. Verified against the cached MRB
+# result (era5_hourly_manual_corr_adjswe_canswe.csv): identical site assigned to
+# all 28,684 cells, distances agreeing to 5e-13 km, in 20 seconds. Ties resolve
+# to the first match in both versions. The original is kept below for reference.
+#
+# matched_data <- era5data %>%
+#   dplyr::rowwise() %>%
+#   dplyr::mutate(closest_point = list(
+#     MT %>%
+#       dplyr::mutate(distance = haversine_dist(lat, lon,
+#                       dplyr::cur_data()$Latitude, dplyr::cur_data()$Longitude)) %>%
+#       dplyr::slice_min(distance, n = 1, with_ties = FALSE) %>%
+#       dplyr::rename(MT_Latitude = Latitude, MT_Longitude = Longitude))) %>%
+#   tidyr::unnest(closest_point)
+
+dist_mat <- outer(
+  seq_len(nrow(era5data)), seq_len(nrow(MT)),
+  Vectorize(function(i, j) haversine_dist(era5data$lat[i], era5data$lon[i],
+                                          MT$Latitude[j], MT$Longitude[j]))
+)
+nearest_site <- max.col(-dist_mat, ties.method = "first")
+
+matched_data <- cbind(
+  era5data,
+  MT[nearest_site, ] %>%
+    dplyr::rename(MT_Latitude = Latitude, MT_Longitude = Longitude)
+)
+matched_data$distance <- dist_mat[cbind(seq_len(nrow(era5data)), nearest_site)]
 
 #optional write to csv
 #write.csv(matched_data, paste0(user, "/Documents/R_Scripts/Packages/snow/data/era5_hourly_manual_corr_adjswe_canswe.csv")) 
@@ -186,81 +229,97 @@ Hay <- sf::st_zm(Hay)
 
 #Lower slave
 
-delta_slave <- sf::st_read(paste0(user, "/Documents/R_Scripts/Packages/snow/data/Shapefiles/07NC003_DrainageBasin_BassinDeDrainage.shp"),
-                           layer = "07NC003_DrainageBasin_BassinDeDrainage")
-delta_slave <- sf::st_transform(delta_slave, crs_proj) # Change the projection
-delta_slave <- sf::st_zm(delta_slave)
-delta_slave <- sf::st_make_valid(delta_slave)
+# Lower Slave polygon. The derivation below is slow (snap + difference on large
+# polygons) and ends in a shapefile write, so it is bypassed whenever the saved
+# shapefile is already present - delete lower_slave_clean.shp to force a rebuild.
+lower_slave_shp <- paste0(shp_path, "lower_slave_clean.shp")
 
-#join peace and athabasca
+if (file.exists(lower_slave_shp)) {
 
-peace_AB <- sf::st_union(Peace, AB)
-peace_AB <- sf::st_transform(peace_AB, crs_proj)
-peace_AB <- sf::st_make_valid(peace_AB) 
+  lower_slave_clean <- sf::st_read(lower_slave_shp, quiet = TRUE) %>%
+    sf::st_transform(proj) %>%
+    sf::st_make_valid()
+  cat("Lower Slave polygon read from file (derivation skipped)\n")
 
-# Make sure both shapefiles are valid, same CRS, polygon-only
+} else {
 
-delta2 <- st_make_valid(st_zm(delta_slave, drop=TRUE, what="ZM")) |>
-  st_collection_extract("POLYGON") |>
-  st_cast("MULTIPOLYGON")
+  delta_slave <- sf::st_read(paste0(user, "/Documents/R_Scripts/Packages/snow/data/Shapefiles/07NC003_DrainageBasin_BassinDeDrainage.shp"),
+                             layer = "07NC003_DrainageBasin_BassinDeDrainage")
+  delta_slave <- sf::st_transform(delta_slave, crs_proj) # Change the projection
+  delta_slave <- sf::st_zm(delta_slave)
+  delta_slave <- sf::st_make_valid(delta_slave)
 
-cutter2 <- st_make_valid(st_zm(peace_AB, drop=TRUE, what="ZM")) |>
-  st_collection_extract("POLYGON") |>
-  st_cast("MULTIPOLYGON")
+  #join peace and athabasca
 
-stopifnot(st_crs(delta2) == st_crs(cutter2))
+  peace_AB <- sf::st_union(Peace, AB)
+  peace_AB <- sf::st_transform(peace_AB, crs_proj)
+  peace_AB <- sf::st_make_valid(peace_AB) 
 
-# Reduce numerical noise 
+  # Make sure both shapefiles are valid, same CRS, polygon-only
 
-delta2  <- st_set_precision(delta2, 1)  |> st_make_valid()
-cutter2 <- st_set_precision(cutter2, 1) |> st_make_valid()
+  delta2 <- st_make_valid(st_zm(delta_slave, drop=TRUE, what="ZM")) |>
+    st_collection_extract("POLYGON") |>
+    st_cast("MULTIPOLYGON")
 
-# Snap with small tolerance (5m)
+  cutter2 <- st_make_valid(st_zm(peace_AB, drop=TRUE, what="ZM")) |>
+    st_collection_extract("POLYGON") |>
+    st_cast("MULTIPOLYGON")
 
-tol <- 5
-cutter_snap <- sf::st_snap(cutter2, delta2, tolerance = tol) |> st_make_valid()
+  stopifnot(st_crs(delta2) == st_crs(cutter2))
 
-# Union the cutter to avoid multipart boundary conflicts
+  # Reduce numerical noise 
 
-cutter_u <- st_union(cutter_snap) |> st_make_valid()
+  delta2  <- st_set_precision(delta2, 1)  |> st_make_valid()
+  cutter2 <- st_set_precision(cutter2, 1) |> st_make_valid()
 
-# Difference
+  # Snap with small tolerance (5m)
 
-lower_slave <- st_difference(delta2, cutter_u) |> st_make_valid()
+  tol <- 5
+  cutter_snap <- sf::st_snap(cutter2, delta2, tolerance = tol) |> st_make_valid()
 
-parts <- st_cast(lower_slave, "POLYGON")
-parts$area_m2 <- st_area(parts)
+  # Union the cutter to avoid multipart boundary conflicts
 
-# Look at the smallest polygons (these are almost always slivers)
-parts |> 
-  sf::st_drop_geometry() |>
-  dplyr::arrange(area_m2) |>
-  head(10)
+  cutter_u <- st_union(cutter_snap) |> st_make_valid()
 
-thresh_m2 <- units::set_units(1e4, "m^2")  # 1 km^2 (adjust if needed)
+  # Difference
 
-keep <- parts[parts$area_m2 >= thresh_m2, ]
-lower_slave_clean <- sf::st_union(keep) |> sf::st_make_valid()
+  lower_slave <- st_difference(delta2, cutter_u) |> st_make_valid()
 
-lower_slave_clean <- lower_slave_clean |>
-  sf::st_zm(drop = TRUE, what = "ZM") |>
-  sf::st_make_valid() |>
-  sf::st_cast("MULTIPOLYGON") |>
-  sf::st_transform(proj)
+  parts <- st_cast(lower_slave, "POLYGON")
+  parts$area_m2 <- st_area(parts)
 
-#write out lower slave data
-sf::st_write(
-  lower_slave_clean,
-  "lower_slave_clean.shp",
-  delete_dsn = TRUE
-)
+  # Look at the smallest polygons (these are almost always slivers)
+  parts |> 
+    sf::st_drop_geometry() |>
+    dplyr::arrange(area_m2) |>
+    head(10)
+
+  thresh_m2 <- units::set_units(1e4, "m^2")  # 1 km^2 (adjust if needed)
+
+  keep <- parts[parts$area_m2 >= thresh_m2, ]
+  lower_slave_clean <- sf::st_union(keep) |> sf::st_make_valid()
+
+  lower_slave_clean <- lower_slave_clean |>
+    sf::st_zm(drop = TRUE, what = "ZM") |>
+    sf::st_make_valid() |>
+    sf::st_cast("MULTIPOLYGON") |>
+    sf::st_transform(proj)
+
+  #write out lower slave data
+  sf::st_write(
+    lower_slave_clean,
+    "lower_slave_clean.shp",
+    delete_dsn = TRUE
+  )
+
+}
 
 lower_slave_clean <- sf::st_read(paste0(user, "/Documents/R_Scripts/Packages/snow/data/Shapefiles/lower_slave_clean.shp"),
                                  layer = "lower_slave_clean")
 
 # transform for leaflet
-
-delta_ll <- sf::st_transform(delta2, proj)
+# (delta_ll was computed here from delta2 and never used; dropped so the block
+#  above can be bypassed when lower_slave_clean.shp already exists)
 lower_ll <- sf::st_transform(lower_slave_clean, proj)
 
 #Assign each lat/long pair in Data_table to basin
@@ -427,12 +486,22 @@ plot <- ggplot2::ggplot(dt_plot, ggplot2::aes(x = NormSen_slope, y = NormMagnitu
   ) +
   ggplot2::geom_abline(slope = 1, intercept = 0, linetype = "dotted",
                        color = "black", linewidth = 1) +
+  # shared basin palette and short labels (functions file), so this legend
+  # matches the basin boxplots below
+  ggplot2::scale_fill_manual(values = basin_cols, labels = short_basin, name = "Basin") +
+  ggplot2::scale_colour_manual(values = basin_cols, labels = short_basin, name = "Basin") +
   ggplot2::scale_x_continuous(limits = c(-15, 20)) +
   ggplot2::scale_y_continuous(limits = shared_limits) +
   ggplot2::theme(
     panel.border = ggplot2::element_rect(fill = NA, linewidth = 1, color = "black"),
     axis.text = ggplot2::element_text(size = 14),
-    axis.title = ggplot2::element_text(size = 18)
+    axis.title = ggplot2::element_text(size = 18),
+    legend.text = ggplot2::element_text(size = 14),
+    legend.title = ggplot2::element_text(size = 14),
+    legend.background = ggplot2::element_rect(colour = "black", linewidth = 0.4),
+    legend.position = "inside",
+    legend.position.inside = c(0.98, 0.02),
+    legend.justification = c(1, 0)
   ) +
   
   # Correlation annotations
@@ -459,7 +528,8 @@ plot <- ggplot2::ggplot(dt_plot, ggplot2::aes(x = NormSen_slope, y = NormMagnitu
 
 plot
 
-ggplot2::ggsave(filename = "corrplot_highres.png", dpi = 900, path = savepath)
+ggplot2::ggsave(filename = paste0("corrplot_highres", fig_suffix, ".png"), plot,
+                dpi = 900, path = savepath, width = 11, height = 8)
 
 #basin stats
 
@@ -469,18 +539,30 @@ basin_stats <- dt_plot %>%
   dplyr::group_modify(~{
     d <- .x
     
+    # a correlation needs at least three finite pairs. At NWT scope some basins
+    # retain only one or two sites, so return NA for those rather than failing
+    # the whole run. No effect at MRB scope, where every basin has more.
+    if (nrow(d) < 3) {
+      return(dplyr::tibble(
+        n = nrow(d), slope = NA_real_, slope_p_value = NA_real_,
+        r2 = NA_real_, rho_pearson = NA_real_, rho_p_value = NA_real_
+      ))
+    }
+
     fit <- lm(NormMagnitude ~ NormSen_slope, data = d)
     sm  <- summary(fit)
     
     slope_row <- broom::tidy(fit) %>% dplyr::filter(term == "NormSen_slope")
     gl <- broom::glance(fit)
     
-    ct <- cor.test(d$NormSen_slope, d$NormMagnitude, method = "spearman", adj_r2 = gl$adj.r.squared)
+    ct <- suppressWarnings(
+      cor.test(d$NormSen_slope, d$NormMagnitude, method = "spearman")
+    )
     
     dplyr::tibble(
       n              = nrow(d),
-      slope          = slope_row$estimate,
-      slope_p_value  = slope_row$p.value,
+      slope          = if (nrow(slope_row)) slope_row$estimate else NA_real_,
+      slope_p_value  = if (nrow(slope_row)) slope_row$p.value  else NA_real_,
       r2             = gl$r.squared,
       rho_pearson    = unname(ct$estimate),
       rho_p_value    = ct$p.value
@@ -490,6 +572,7 @@ basin_stats <- dt_plot %>%
   dplyr::arrange(desc(n))
 
 basin_stats
+write.csv(basin_stats, paste0(savepath, "/tblA_basin_corr", fig_suffix, ".csv"), row.names = FALSE)
 
 #boxplots
 
@@ -521,27 +604,47 @@ swe_long <- dt %>%
     )
   )
 
-p_swe <- ggplot2::ggplot(swe_long, ggplot2::aes(x = basin, y = meanmax_swe_mm, fill = source)) +
-  ggplot2::geom_boxplot(outlier.alpha = 0.2) +
+# Coloured by basin with the Fig. A3 palette: ERA5-Land a lighter shade and the
+# manual surveys a darker shade of the same basin colour, so the pair reads as
+# one basin and the source is carried by lightness (alpha legend in grey).
+swe_long <- swe_long %>%
+  dplyr::filter(!is.na(basin)) %>%
+  dplyr::mutate(fill_col = ifelse(source == "ERA5-Land",
+                                  shade_col(basin_cols[basin], 0.45),
+                                  shade_col(basin_cols[basin], -0.25)))
+
+p_swe <- ggplot2::ggplot(swe_long, ggplot2::aes(x = basin, y = meanmax_swe_mm,
+                                                group = interaction(source, basin))) +
+  ggplot2::geom_boxplot(ggplot2::aes(fill = fill_col), outlier.alpha = 0.3,
+                        position = ggplot2::position_dodge(width = 0.8), width = 0.7) +
+  ggplot2::scale_fill_identity() +
+  # invisible layer that only exists to draw the source legend
+  ggplot2::geom_point(ggplot2::aes(shape = source), alpha = 0, size = 0) +
+  ggplot2::scale_shape_manual(values = c("ERA5-Land" = 22, "Manual surveys" = 22), name = NULL) +
+  ggplot2::guides(shape = ggplot2::guide_legend(override.aes = list(
+    alpha = 1, size = 7, colour = "grey20", fill = c("grey80", "grey35")))) +
+  ggplot2::scale_x_discrete(labels = short_basin) +
   ggplot2::theme_classic() +
-  #ggplot2::geom_jitter() +
   ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1)) +
   ggplot2::labs(
     x = "Basin",
-    y = "Mean end-of-season SWE (mm)",
-    fill = NULL
+    y = "Mean end-of-season SWE (mm)"
   ) +
   ggplot2::theme(
     panel.border = ggplot2::element_rect(fill = NA, linewidth = 1, color = "black"),
-    axis.text = ggplot2::element_text(size = 12),
-    axis.title = ggplot2::element_text(size = 12),
-    legend.text =  ggplot2::element_text(size = 12) )
+    axis.text = ggplot2::element_text(size = 14),
+    axis.title = ggplot2::element_text(size = 18),
+    legend.text =  ggplot2::element_text(size = 14),
+    legend.position = "inside",
+    legend.position.inside = c(0.02, 0.98),
+    legend.justification = c(0, 1))
 
 p_swe
 
 p_swe_basin <- p_swe
 
-ggplot2::ggsave(filename = "p_swe_basin.png", dpi = 900, path = savepath)
+ggplot2::ggsave(filename = paste0("p_swe_basin", fig_suffix, ".png"), p_swe_basin,
+                dpi = 900, path = savepath, width = 10, height = 7)
 
 trend_long <- dt %>%
   dplyr::select(basin, ERA5_trend, Manual_trend) %>%
@@ -579,7 +682,7 @@ p_trend
 
 p_trend_basin <- p_trend
 
-ggplot2::ggsave(filename = "p_trend_basin.png", dpi = 900, path = savepath)
+ggplot2::ggsave(filename = paste0("p_trend_basin", fig_suffix, ".png"), dpi = 900, path = savepath)
 
 p_error <- ggplot2::ggplot(dt, ggplot2::aes(x = basin, y = abs_err_norm, fill = basin)) +
   ggplot2::geom_boxplot(outlier.alpha = 0.2) +
@@ -601,13 +704,14 @@ p_error
 
 p_error_basin <- p_error
 
-ggplot2::ggsave(filename = "p_error_basin.png", dpi = 900, path = savepath)
+ggplot2::ggsave(filename = paste0("p_error_basin", fig_suffix, ".png"), dpi = 900, path = savepath)
 
 means_swe <- swe_long %>%
   dplyr::group_by(basin, source) %>%
   dplyr::summarise(
     n = sum(!is.na(meanmax_swe_mm)),
     mean_meanmax_swe_mm = mean(meanmax_swe_mm, na.rm = TRUE),
+    sd_meanmax_swe_mm   = stats::sd(meanmax_swe_mm, na.rm = TRUE),
     .groups = "drop"
   )
 
@@ -616,6 +720,7 @@ means_trend <- trend_long %>%
   dplyr::summarise(
     n = sum(!is.na(trend)),
     mean_trend = mean(trend, na.rm = TRUE),
+    sd_trend   = stats::sd(trend, na.rm = TRUE),
     .groups = "drop"
   )
 
@@ -624,8 +729,27 @@ means_error <- dt %>%
   dplyr::summarise(
     n = sum(!is.na(abs_err_norm)),
     mean_error = mean(abs_err_norm, na.rm = TRUE),
+    sd_error   = stats::sd(abs_err_norm, na.rm = TRUE),
     .groups = "drop"
   )
+
+# trends as % of mean SWE per decade, the units quoted in Tables A2-A5
+means_trend_pct <- dt %>%
+  dplyr::group_by(basin) %>%
+  dplyr::summarise(
+    n              = sum(!is.na(NormSen_slope)),
+    mean_era5_pct  = mean(NormSen_slope, na.rm = TRUE),
+    sd_era5_pct    = stats::sd(NormSen_slope, na.rm = TRUE),
+    mean_manual_pct = mean(NormMagnitude, na.rm = TRUE),
+    sd_manual_pct  = stats::sd(NormMagnitude, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# summary tables for the manuscript appendix (Tables A2-A5), one set per scope
+write.csv(means_swe,   paste0(savepath, "/tblA_meanswe_basin", fig_suffix, ".csv"), row.names = FALSE)
+write.csv(means_trend, paste0(savepath, "/tblA_trend_basin",   fig_suffix, ".csv"), row.names = FALSE)
+write.csv(means_error, paste0(savepath, "/tblA_error_basin",   fig_suffix, ".csv"), row.names = FALSE)
+write.csv(means_trend_pct, paste0(savepath, "/tblA_trendpct_basin", fig_suffix, ".csv"), row.names = FALSE)
 
 means_swe
 means_trend
@@ -636,6 +760,7 @@ means_error
 basin <- unique(dt$basin)
 
 wilcox.test.results <- data.frame(
+  test_statistic_W = numeric(),
   test_results_p = numeric(),
   basin = character()
 )
@@ -648,10 +773,12 @@ for (i in basin){
   wilcox.test.results <- wilcox.test.results %>%
     dplyr::add_row(
       basin = i,
+      test_statistic_W = unname(test$statistic),
       test_results_p = test$p.value
     )
   
 }
+write.csv(wilcox.test.results, paste0(savepath, "/tblA_wilcox_swe_basin", fig_suffix, ".csv"), row.names = FALSE)
 
 # #Similar analysis as above but with eco/region/zone/province
 
@@ -733,7 +860,7 @@ p_swe <- ggplot2::ggplot(swe_long, ggplot2::aes(x = ECOZONE_NA, y = meanmax_swe_
 
 p_swe
 
-ggplot2::ggsave(filename = "p_swe.png", dpi = 900, path = savepath)
+ggplot2::ggsave(filename = paste0("p_swe", fig_suffix, ".png"), dpi = 900, path = savepath)
 
 trend_long <- dt %>%
   dplyr::select(ECOZONE_NA, ERA5_trend, Manual_trend) %>%
@@ -769,7 +896,7 @@ p_trend <- ggplot2::ggplot(trend_long, ggplot2::aes(x = ECOZONE_NA, y = trend, f
 
 p_trend
 
-ggplot2::ggsave(filename = "p_trend.png", dpi = 900, path = savepath)
+ggplot2::ggsave(filename = paste0("p_trend", fig_suffix, ".png"), dpi = 900, path = savepath)
 
 p_error <- ggplot2::ggplot(dt, ggplot2::aes(x = ECOZONE_NA, y = abs_err_norm, fill = ECOZONE_NA)) +
   ggplot2::geom_boxplot(outlier.alpha = 0.2) +
@@ -789,13 +916,14 @@ p_error <- ggplot2::ggplot(dt, ggplot2::aes(x = ECOZONE_NA, y = abs_err_norm, fi
 
 p_error
 
-ggplot2::ggsave(filename = "p_error.png", dpi = 900, path = savepath)
+ggplot2::ggsave(filename = paste0("p_error", fig_suffix, ".png"), dpi = 900, path = savepath)
 
 means_swe <- swe_long %>%
   dplyr::group_by(ECOZONE_NA, source) %>%
   dplyr::summarise(
     n = sum(!is.na(meanmax_swe_mm)),
     mean_meanmax_swe_mm = mean(meanmax_swe_mm, na.rm = TRUE),
+    sd_meanmax_swe_mm   = stats::sd(meanmax_swe_mm, na.rm = TRUE),
     .groups = "drop"
   )
 
@@ -804,6 +932,7 @@ means_trend <- trend_long %>%
   dplyr::summarise(
     n = sum(!is.na(trend)),
     mean_trend = mean(trend, na.rm = TRUE),
+    sd_trend   = stats::sd(trend, na.rm = TRUE),
     .groups = "drop"
   )
 
@@ -812,8 +941,27 @@ means_error <- dt %>%
   dplyr::summarise(
     n = sum(!is.na(abs_err_norm)),
     mean_error = mean(abs_err_norm, na.rm = TRUE),
+    sd_error   = stats::sd(abs_err_norm, na.rm = TRUE),
     .groups = "drop"
   )
+
+# trends as % of mean SWE per decade, the units quoted in Tables A2-A5
+means_trend_pct <- dt %>%
+  dplyr::group_by(ECOZONE_NA) %>%
+  dplyr::summarise(
+    n              = sum(!is.na(NormSen_slope)),
+    mean_era5_pct  = mean(NormSen_slope, na.rm = TRUE),
+    sd_era5_pct    = stats::sd(NormSen_slope, na.rm = TRUE),
+    mean_manual_pct = mean(NormMagnitude, na.rm = TRUE),
+    sd_manual_pct  = stats::sd(NormMagnitude, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# summary tables for the manuscript appendix (Tables A2-A5), one set per scope
+write.csv(means_swe,   paste0(savepath, "/tblA_meanswe_ecozone", fig_suffix, ".csv"), row.names = FALSE)
+write.csv(means_trend, paste0(savepath, "/tblA_trend_ecozone",   fig_suffix, ".csv"), row.names = FALSE)
+write.csv(means_error, paste0(savepath, "/tblA_error_ecozone",   fig_suffix, ".csv"), row.names = FALSE)
+write.csv(means_trend_pct, paste0(savepath, "/tblA_trendpct_ecozone", fig_suffix, ".csv"), row.names = FALSE)
 
 means_swe
 means_trend
@@ -824,6 +972,7 @@ means_error
 ecozone <- unique(dt_ecoz$ECOZONE_NA)
 
 wilcox.test.results <- data.frame(
+  test_statistic_W = numeric(),
   test_results_p = numeric(),
   ecozone = character()
 )
@@ -836,10 +985,12 @@ for (i in ecozone){
   wilcox.test.results <- wilcox.test.results %>%
     dplyr::add_row(
       ecozone = i,
+      test_statistic_W = unname(test$statistic),
       test_results_p = test$p.value
     )
   
 }
+write.csv(wilcox.test.results, paste0(savepath, "/tblA_wilcox_swe_ecozone", fig_suffix, ".csv"), row.names = FALSE)
 
 # #Similar analysis as above but with eco/region/zone/province
 
@@ -921,7 +1072,7 @@ p_swe <- ggplot2::ggplot(swe_long, ggplot2::aes(x = ECOREGION1, y = meanmax_swe_
 
 p_swe_region <- p_swe
 
-ggplot2::ggsave(filename = "p_swe_region.png", dpi = 900, path = savepath)
+ggplot2::ggsave(filename = paste0("p_swe_region", fig_suffix, ".png"), dpi = 900, path = savepath)
 
 trend_long <- dt %>%
   dplyr::select(ECOREGION1, ERA5_trend, Manual_trend) %>%
@@ -957,7 +1108,7 @@ p_trend <- ggplot2::ggplot(trend_long, ggplot2::aes(x = ECOREGION1, y = trend, f
 
 p_trend_region <- p_trend
 
-ggplot2::ggsave(filename = "p_trend_region.png", dpi = 900, path = savepath)
+ggplot2::ggsave(filename = paste0("p_trend_region", fig_suffix, ".png"), dpi = 900, path = savepath)
 
 p_error <- ggplot2::ggplot(dt, ggplot2::aes(x = ECOREGION1, y = abs_err_norm, fill = ECOREGION1)) +
   ggplot2::geom_boxplot(outlier.alpha = 0.2) +
@@ -978,13 +1129,14 @@ p_error <- ggplot2::ggplot(dt, ggplot2::aes(x = ECOREGION1, y = abs_err_norm, fi
 
 p_error_region <- p_error
 
-ggplot2::ggsave(filename = "p_error_region.png", dpi = 900, path = savepath)
+ggplot2::ggsave(filename = paste0("p_error_region", fig_suffix, ".png"), dpi = 900, path = savepath)
 
 means_swe <- swe_long %>%
   dplyr::group_by(ECOREGION1, source) %>%
   dplyr::summarise(
     n = sum(!is.na(meanmax_swe_mm)),
     mean_meanmax_swe_mm = mean(meanmax_swe_mm, na.rm = TRUE),
+    sd_meanmax_swe_mm   = stats::sd(meanmax_swe_mm, na.rm = TRUE),
     .groups = "drop"
   )
 
@@ -993,6 +1145,7 @@ means_trend <- trend_long %>%
   dplyr::summarise(
     n = sum(!is.na(trend)),
     mean_trend = mean(trend, na.rm = TRUE),
+    sd_trend   = stats::sd(trend, na.rm = TRUE),
     .groups = "drop"
   )
 
@@ -1001,8 +1154,27 @@ means_error <- dt %>%
   dplyr::summarise(
     n = sum(!is.na(abs_err_norm)),
     mean_error = mean(abs_err_norm, na.rm = TRUE),
+    sd_error   = stats::sd(abs_err_norm, na.rm = TRUE),
     .groups = "drop"
   )
+
+# trends as % of mean SWE per decade, the units quoted in Tables A2-A5
+means_trend_pct <- dt %>%
+  dplyr::group_by(ECOREGION1) %>%
+  dplyr::summarise(
+    n              = sum(!is.na(NormSen_slope)),
+    mean_era5_pct  = mean(NormSen_slope, na.rm = TRUE),
+    sd_era5_pct    = stats::sd(NormSen_slope, na.rm = TRUE),
+    mean_manual_pct = mean(NormMagnitude, na.rm = TRUE),
+    sd_manual_pct  = stats::sd(NormMagnitude, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# summary tables for the manuscript appendix (Tables A2-A5), one set per scope
+write.csv(means_swe,   paste0(savepath, "/tblA_meanswe_ecoregion", fig_suffix, ".csv"), row.names = FALSE)
+write.csv(means_trend, paste0(savepath, "/tblA_trend_ecoregion",   fig_suffix, ".csv"), row.names = FALSE)
+write.csv(means_error, paste0(savepath, "/tblA_error_ecoregion",   fig_suffix, ".csv"), row.names = FALSE)
+write.csv(means_trend_pct, paste0(savepath, "/tblA_trendpct_ecoregion", fig_suffix, ".csv"), row.names = FALSE)
 
 means_swe
 means_trend
@@ -1013,6 +1185,7 @@ means_error
 ecoregion <- unique(dt_ecoz$ECOREGION1)
 
 wilcox.test.results <- data.frame(
+  test_statistic_W = numeric(),
   test_results_p = numeric(),
   ecoregion = character()
 )
@@ -1027,10 +1200,12 @@ for (i in ecoregion){
   wilcox.test.results <- wilcox.test.results %>%
     dplyr::add_row(
       ecoregion = i,
+      test_statistic_W = unname(test$statistic),
       test_results_p = test$p.value
     )
   
 }
+write.csv(wilcox.test.results, paste0(savepath, "/tblA_wilcox_swe_ecoregion", fig_suffix, ".csv"), row.names = FALSE)
 
 # #Similar analysis as above but with eco/region/zone/province
 
@@ -1114,7 +1289,7 @@ p_swe_ecoprov <- p_swe
 
 p_swe_ecoprov
 
-ggplot2::ggsave(filename = "p_swe_ecoprov.png", dpi = 900, path = savepath)
+ggplot2::ggsave(filename = paste0("p_swe_ecoprov", fig_suffix, ".png"), dpi = 900, path = savepath)
 
 trend_long <- dt %>%
   dplyr::select(ECOPROVI_1, ERA5_trend, Manual_trend) %>%
@@ -1152,7 +1327,7 @@ p_trend_ecoprov <- p_trend
 
 p_trend_ecoprov
 
-ggplot2::ggsave(filename = "p_trend_ecoprov.png", dpi = 900, path = savepath)
+ggplot2::ggsave(filename = paste0("p_trend_ecoprov", fig_suffix, ".png"), dpi = 900, path = savepath)
 
 p_error <- ggplot2::ggplot(dt, ggplot2::aes(x = ECOPROVI_1, y = abs_err_norm, fill = ECOPROVI_1)) +
   ggplot2::geom_boxplot(outlier.alpha = 0.2) +
@@ -1174,13 +1349,14 @@ p_error_ecoprov <- p_error
 
 p_error_ecoprov 
 
-ggplot2::ggsave(filename = "p_error_ecoprov.png", dpi = 900, path = savepath)
+ggplot2::ggsave(filename = paste0("p_error_ecoprov", fig_suffix, ".png"), dpi = 900, path = savepath)
 
 means_swe <- swe_long %>%
   dplyr::group_by(ECOPROVI_1, source) %>%
   dplyr::summarise(
     n = sum(!is.na(meanmax_swe_mm)),
     mean_meanmax_swe_mm = mean(meanmax_swe_mm, na.rm = TRUE),
+    sd_meanmax_swe_mm   = stats::sd(meanmax_swe_mm, na.rm = TRUE),
     .groups = "drop"
   )
 
@@ -1189,6 +1365,7 @@ means_trend <- trend_long %>%
   dplyr::summarise(
     n = sum(!is.na(trend)),
     mean_trend = mean(trend, na.rm = TRUE),
+    sd_trend   = stats::sd(trend, na.rm = TRUE),
     .groups = "drop"
   )
 
@@ -1197,8 +1374,27 @@ means_error <- dt %>%
   dplyr::summarise(
     n = sum(!is.na(abs_err_norm)),
     mean_error = mean(abs_err_norm, na.rm = TRUE),
+    sd_error   = stats::sd(abs_err_norm, na.rm = TRUE),
     .groups = "drop"
   )
+
+# trends as % of mean SWE per decade, the units quoted in Tables A2-A5
+means_trend_pct <- dt %>%
+  dplyr::group_by(ECOPROVI_1) %>%
+  dplyr::summarise(
+    n              = sum(!is.na(NormSen_slope)),
+    mean_era5_pct  = mean(NormSen_slope, na.rm = TRUE),
+    sd_era5_pct    = stats::sd(NormSen_slope, na.rm = TRUE),
+    mean_manual_pct = mean(NormMagnitude, na.rm = TRUE),
+    sd_manual_pct  = stats::sd(NormMagnitude, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# summary tables for the manuscript appendix (Tables A2-A5), one set per scope
+write.csv(means_swe,   paste0(savepath, "/tblA_meanswe_ecoprovince", fig_suffix, ".csv"), row.names = FALSE)
+write.csv(means_trend, paste0(savepath, "/tblA_trend_ecoprovince",   fig_suffix, ".csv"), row.names = FALSE)
+write.csv(means_error, paste0(savepath, "/tblA_error_ecoprovince",   fig_suffix, ".csv"), row.names = FALSE)
+write.csv(means_trend_pct, paste0(savepath, "/tblA_trendpct_ecoprovince", fig_suffix, ".csv"), row.names = FALSE)
 
 means_swe
 means_trend
@@ -1209,6 +1405,7 @@ means_error
 ecoprovince <- unique(dt_ecoz$ECOPROVI_1)
 
 wilcox.test.results <- data.frame(
+  test_statistic_W = numeric(),
   test_results_p = numeric(),
   ecoprovince = character()
 )
@@ -1223,7 +1420,9 @@ for (i in ecoprovince){
   wilcox.test.results <- wilcox.test.results %>%
     dplyr::add_row(
       ecoprovince = i,
+      test_statistic_W = unname(test$statistic),
       test_results_p = test$p.value
     )
   
 }
+write.csv(wilcox.test.results, paste0(savepath, "/tblA_wilcox_swe_ecoprovince", fig_suffix, ".csv"), row.names = FALSE)

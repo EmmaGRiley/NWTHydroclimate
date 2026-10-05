@@ -394,6 +394,8 @@ ERA5_snow <- ERA5_snow %>%
             TA["Significance"] = if (test.mk[2] < p.value) {"yes"} else {"no"}
             TA["Years of Record"] = dplyr::n_distinct(TA$year)
             TA["Method"] = "Modified MK"
+            TA["Tau"] = round(as.numeric(test.mk[6]), 4)     # Kendall's tau
+            TA["Z"] = round(as.numeric(test.mk[1]), 4)       # variance-corrected Zc
           } else {
             # Use regular Mann-Kendall for non-autocorrelated sites
             test.mk <- Kendall::MannKendall(TA$meanswe)
@@ -405,6 +407,9 @@ ERA5_snow <- ERA5_snow %>%
             TA["Significance"] = if (test.mk[2] < p.value) {"yes"} else {"no"}
             TA["Years of Record"] = dplyr::n_distinct(TA$year)
             TA["Method"] = "Standard MK"
+            TA["Tau"] = round(as.numeric(test.mk$tau), 4)
+            # continuity-corrected Z, as used for the Kendall p-value
+            TA["Z"] = round(as.numeric((test.mk$S - sign(test.mk$S)) / sqrt(test.mk$varS)), 4)
           }
           
           table <- rbind(table, TA)
@@ -470,6 +475,8 @@ ERA5_snow <- ERA5_snow %>%
               TA_canswe["Significance"] = ifelse(test.mk[2] < p.value, "yes", "no")
               TA_canswe["Years of Record"] = dplyr::n_distinct(TA_canswe$year)
               TA_canswe["Method"] = "Modified MK"
+              TA_canswe["Tau"] = round(as.numeric(test.mk[6]), 4)
+              TA_canswe["Z"] = round(as.numeric(test.mk[1]), 4)
             }
           } else {
             # Use regular Mann-Kendall for non-autocorrelated sites
@@ -483,6 +490,8 @@ ERA5_snow <- ERA5_snow %>%
               TA_canswe["Significance"] = ifelse(test.mk[2] < p.value, "yes", "no")
               TA_canswe["Years of Record"] = dplyr::n_distinct(TA_canswe$year)
               TA_canswe["Method"] = "Standard MK"
+              TA_canswe["Tau"] = round(as.numeric(test.mk$tau), 4)
+              TA_canswe["Z"] = round(as.numeric((test.mk$S - sign(test.mk$S)) / sqrt(test.mk$varS)), 4)
             }
           }
           
@@ -502,6 +511,8 @@ ERA5_snow <- ERA5_snow %>%
                      Significance = dplyr::first(Significance),
                      `Years of Record` = dplyr::first(`Years of Record`),
                      Method = dplyr::first(Method),
+                     Tau = dplyr::first(Tau),
+                     Z = dplyr::first(Z),
                      sitemeanswe = dplyr::first(sitemeanswe)) %>%  # Add Method to output
       dplyr::filter(`Years of Record` > min_year)
     
@@ -512,6 +523,8 @@ ERA5_snow <- ERA5_snow %>%
                      Significance = dplyr::first(Significance),
                      `Years of Record` = dplyr::first(`Years of Record`),
                      Method = dplyr::first(Method),
+                     Tau = dplyr::first(Tau),
+                     Z = dplyr::first(Z),
                      sitemeanswe = dplyr::first(sitemeanswe)) %>%  # Add Method to output
       dplyr::filter(`Years of Record` > min_year)
     
@@ -570,7 +583,7 @@ ERA5_snow <- ERA5_snow %>%
       ) %>%
       dplyr::select(
         Site_name, Magnitude, p.value, Significance,
-        Years.of.Record, Method, elevation,
+        Years.of.Record, Method, Tau, Z, elevation,
         Latitude, Longitude, sitemeanswe, NormMagnitude
       ) %>%
       sf::st_drop_geometry()
@@ -1146,4 +1159,4 @@ if(save == T){
                    delay = 5, vwidth = 1500, vheight = 1500, zoom = 4)
 }
 
-##################################################################################################
+##################################################################################################

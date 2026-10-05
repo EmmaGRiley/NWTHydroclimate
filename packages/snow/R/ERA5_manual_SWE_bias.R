@@ -44,7 +44,7 @@ ldensity <- 0.1
 #   NWT-scope basins  Snare, Taltson, Yellowknife, Mackenzie River main stem,
 #                     Lower Slave, Great Slave Lake - other
 #   MRB-scope only    Peace, Athabasca, Liard, Hay, Peel
-scope <- "NWT"
+scope <- "MRB"
 
 # CanSWE sites are only needed to fill in the MRB outside the NWT
 include_canswe <- (scope == "MRB")
@@ -543,6 +543,10 @@ matched_data_sf_basin$basin <- ifelse(is.na(matched_data_sf_basin$basin == T)&ma
 matched_data_basin <- matched_data_sf_basin %>%
   sf::st_drop_geometry()
 
+#optional write out
+#write.csv(matched_data_basin, paste0(savepath, "matched_data_basin", scope, ".csv"), row.names = F)
+matched_data_basin <- read.csv(paste0(savepath, "matched_data_basin", scope, ".csv"))
+
 #variability/bias test
 #signed: positive = ERA5-Land reads higher than the manual survey
 # UNITS: manual surveys arrive in cm and ERA5-Land in m w.e.; everything from
@@ -626,13 +630,16 @@ matched_data_basin <- matched_data_basin %>%
   dplyr::ungroup()
 
 # -----------------------------------------------------------------------------
-# 2) Attach ecozone and ecoregion
-#    layer/col options: "mackenzie_ecozonesv2" & "ECOZONE_NA"
-#                       "mackenzie_ecoregions" & "ECOREGION1"
-#                       "mackenzie_ecoprovinces" & "ECOPROVI_1"
+# 2) Attach ecozone, ecoprovince and ecoregion
+#    layer/col: "mackenzie_ecozonesv2"    & "ECOZONE_NA"   - coarsest
+#               "mackenzie_ecoprovinces"  & "ECOPROVI_1"
+#               "mackenzie_ecoregions"    & "ECOREGION1"   - finest
 # -----------------------------------------------------------------------------
 
 ecozones <- sf::st_read(paste0(shp_path, "mackenzie_ecozonesv2.shp")) %>%
+  sf::st_transform(proj)
+
+ecoprovinces <- sf::st_read(paste0(shp_path, "mackenzie_ecoprovinces.shp")) %>%
   sf::st_transform(proj)
 
 ecoregions <- sf::st_read(paste0(shp_path, "mackenzie_ecoregions.shp")) %>%
@@ -645,7 +652,11 @@ pts_eco <- as_points_sf(matched_data_basin,
 
 pts_eco <- attach_region(pts_eco, ecozones, "ECOZONE_NA",
                          max_km = 50, region_out_col = "ecozone")
-pts_eco$dist_to_region_m <- NULL   # drop so the second call can add its own
+pts_eco$dist_to_region_m <- NULL   # drop so the next call can add its own
+
+pts_eco <- attach_region(pts_eco, ecoprovinces, "ECOPROVI_1",
+                         max_km = 50, region_out_col = "ecoprovince")
+pts_eco$dist_to_region_m <- NULL
 
 pts_eco <- attach_region(pts_eco, ecoregions, "ECOREGION1",
                          max_km = 50, region_out_col = "ecoregion")
@@ -654,18 +665,22 @@ bias_data <- pts_eco %>%
   sf::st_drop_geometry()
 
 # coverage check - anything unlabelled will silently vanish from the summaries
-cat("\nUnassigned basin  :", sum(is.na(bias_data$basin)), "rows\n")
-cat("Unassigned ecozone:", sum(is.na(bias_data$ecozone)), "rows\n")
+cat("\nUnassigned basin       :", sum(is.na(bias_data$basin)), "rows\n")
+cat("Unassigned ecozone     :", sum(is.na(bias_data$ecozone)), "rows\n")
+cat("Unassigned ecoprovince :", sum(is.na(bias_data$ecoprovince)), "rows\n")
+cat("Unassigned ecoregion   :", sum(is.na(bias_data$ecoregion)), "rows\n")
 print(sort(unique(bias_data$ecozone)))
+print(sort(unique(bias_data$ecoprovince)))
 
 # -----------------------------------------------------------------------------
-# 3) Stack basin and ecozone so one pipeline serves both groupings
+# 3) Stack the groupings so one pipeline serves all of them
 # -----------------------------------------------------------------------------
 
 bias_long <- dplyr::bind_rows(
   bias_data %>% dplyr::mutate(region_type = "Basin",     region = basin),
   bias_data %>% dplyr::mutate(region_type = "Ecozone",   region = ecozone),
-  bias_data %>% dplyr::mutate(region_type = "Ecoregion", region = ecoregion)
+  bias_data %>% dplyr::mutate(region_type = "Ecoprovince", region = ecoprovince),
+  bias_data %>% dplyr::mutate(region_type = "Ecoregion",   region = ecoregion)
 ) %>%
   dplyr::filter(!is.na(region), !is.na(bias))
 
@@ -756,22 +771,44 @@ site_bias <- bias_data %>%
 # ERA5_snowcomparison_ER.R so the two sets of figures sit together in a report:
 # region on the x axis with 45 degree labels, default ggplot fill palette,
 # boxed panel, 12 pt text.
-theme_box_er <- function() {
+# Axis label angle follows ERA5_snowcomparison_ER.R so the two sets of figures
+# match in the manuscript: ECOREGION panels use 90 degrees there (Figs A10-A12),
+# everything else uses 45.
+#
+# margin_l widens the left plot margin. A 45 degree label runs down and to the
+# LEFT of its tick, so the leftmost category on a long-named axis gets clipped at
+# the plot edge unless room is made for it; left_margin_for() sizes that room
+# from the longest label. A 90 degree label sits directly under its tick and
+# needs none, so the margin is only applied at 45.
+theme_box_er <- function(margin_l = 5.5, angle = 45) {
   list(
     ggplot2::theme_classic(),
     ggplot2::theme(
-      axis.text.x  = ggplot2::element_text(angle = 45, hjust = 1),
+      axis.text.x  = ggplot2::element_text(angle = angle, hjust = 1),
       panel.border = ggplot2::element_rect(fill = NA, linewidth = 1, color = "black"),
       axis.text    = ggplot2::element_text(size = 12),
       axis.title   = ggplot2::element_text(size = 12),
-      legend.text  = ggplot2::element_text(size = 12)
+      legend.text  = ggplot2::element_text(size = 12),
+      plot.margin  = ggplot2::margin(5.5, 5.5, 5.5, margin_l, "pt")
     )
   )
 }
 
+# horizontal reach of the longest label once rotated 45 degrees, in points:
+# characters x mean glyph width at 12 pt x cos(45). Floored at the ggplot
+# default so short-labelled panels are unaffected.
+# 90 degrees for Ecoregion, 45 elsewhere - matching the comparison script
+label_angle_for <- function(rt) if (identical(rt, "Ecoregion")) 90 else 45
+
+left_margin_for <- function(labels) {
+  n <- suppressWarnings(max(nchar(as.character(labels)), na.rm = TRUE))
+  if (!is.finite(n)) return(5.5)
+  max(5.5, n * 6.6 * 0.707)
+}
+
 # =============================================================================
 # 7) DOES THE BIAS CHANGE BETWEEN HIGH AND LOW SNOW YEARS?
-# Same basin / ecozone / ecoregion structure as above, but the year axis is
+# Same basin / ecozone / ecoprovince / ecoregion structure as above, but the year axis is
 # replaced by how much snow that year actually had, expressed as an anomaly so
 # that regions with very different snow climates can be compared directly.
 # =============================================================================
@@ -847,7 +884,8 @@ cat("\nSites with a usable snow anomaly:",
 snow_long <- dplyr::bind_rows(
   snow_site %>% dplyr::mutate(region_type = "Basin",     region = basin),
   snow_site %>% dplyr::mutate(region_type = "Ecozone",   region = ecozone),
-  snow_site %>% dplyr::mutate(region_type = "Ecoregion", region = ecoregion)
+  snow_site %>% dplyr::mutate(region_type = "Ecoprovince", region = ecoprovince),
+  snow_site %>% dplyr::mutate(region_type = "Ecoregion",   region = ecoregion)
 ) %>%
   dplyr::filter(!is.na(region), !is.na(bias), !is.na(z_ref))
 
@@ -1042,7 +1080,7 @@ site_years <- snow_site %>%
 
 # per-site high minus low contrast.
 site_highlow <- site_years %>%
-  dplyr::group_by(basin, ecozone, ecoregion, Site_name) %>%
+  dplyr::group_by(basin, ecozone, ecoprovince, ecoregion, Site_name) %>%
   dplyr::group_modify(function(.x, .y) {
 
     lo <- .x[.x$snow_class_site == "Low",  ]
@@ -1080,7 +1118,8 @@ print(site_highlow, n = 60)
 site_highlow_long <- dplyr::bind_rows(
   site_highlow %>% dplyr::mutate(region_type = "Basin",     region = basin),
   site_highlow %>% dplyr::mutate(region_type = "Ecozone",   region = ecozone),
-  site_highlow %>% dplyr::mutate(region_type = "Ecoregion", region = ecoregion)
+  site_highlow %>% dplyr::mutate(region_type = "Ecoprovince", region = ecoprovince),
+  site_highlow %>% dplyr::mutate(region_type = "Ecoregion",   region = ecoregion)
 ) %>%
   dplyr::filter(!is.na(region))
 
@@ -1143,7 +1182,8 @@ site_year_mag <- snow_site %>%
 site_year_mag_long <- dplyr::bind_rows(
   site_year_mag %>% dplyr::mutate(region_type = "Basin",     region = basin),
   site_year_mag %>% dplyr::mutate(region_type = "Ecozone",   region = ecozone),
-  site_year_mag %>% dplyr::mutate(region_type = "Ecoregion", region = ecoregion)
+  site_year_mag %>% dplyr::mutate(region_type = "Ecoprovince", region = ecoprovince),
+  site_year_mag %>% dplyr::mutate(region_type = "Ecoregion",   region = ecoregion)
 ) %>%
   dplyr::filter(!is.na(region))
 
@@ -1217,6 +1257,41 @@ print(site_year_mag_stats, n = 50)
 # distribution really is skewed and outlier-driven, and the rank and sign tests
 # are the ones to believe.
 
+# Games-Howell pairwise comparison: the Welch-consistent analogue of Tukey.
+# Uses a separate variance and Welch-Satterthwaite df for each pair, so it does
+# not assume equal variance, and takes p from the studentised range so the three
+# comparisons are corrected as a family. Where variances really are equal it
+# returns almost exactly what Tukey returns.
+games_howell <- function(x, g, conf = 0.95) {
+
+  g   <- droplevels(factor(g))
+  lev <- levels(g)
+  k   <- length(lev)
+  n   <- tapply(x, g, length)
+  m   <- tapply(x, g, mean)
+  v   <- tapply(x, g, stats::var)
+
+  out <- list()
+  for (i in seq_len(k)) for (j in seq_len(k)) {
+    if (j <= i) next
+    a <- lev[j]; b <- lev[i]          # contrast is a - b, matching "High-Low"
+    if (is.na(n[a]) || is.na(n[b]) || n[a] < 2 || n[b] < 2) next
+    se2 <- v[a]/n[a] + v[b]/n[b]
+    if (!is.finite(se2) || se2 <= 0) next
+    df <- se2^2 / ((v[a]/n[a])^2/(n[a]-1) + (v[b]/n[b])^2/(n[b]-1))
+    dm <- m[a] - m[b]
+    q  <- abs(dm) / sqrt(se2 / 2)     # studentised range statistic
+    pv <- stats::ptukey(q, nmeans = k, df = df, lower.tail = FALSE)
+    cr <- stats::qtukey(conf, nmeans = k, df = df) * sqrt(se2 / 2)
+    out[[paste0(a, "-", b)]] <- c(diff = unname(dm), lwr = unname(dm - cr),
+                                  upr = unname(dm + cr), p = unname(pv),
+                                  q = unname(q), df = unname(df))
+  }
+  if (!length(out)) return(matrix(numeric(0), nrow = 0, ncol = 6,
+                                  dimnames = list(NULL, c("diff","lwr","upr","p","q","df"))))
+  do.call(rbind, out)
+}
+
 anova_by_class <- function(d, yv) {
 
   d <- d[is.finite(d[[yv]]), , drop = FALSE]
@@ -1225,10 +1300,21 @@ anova_by_class <- function(d, yv) {
   na_row <- dplyr::tibble(
     n = nrow(d), n_low = NA_integer_, n_normal = NA_integer_, n_high = NA_integer_,
     mean_low = NA_real_, mean_normal = NA_real_, mean_high = NA_real_,
-    F_value = NA_real_, p_anova = NA_real_, p_welch = NA_real_,
-    eta_sq = NA_real_, p_kruskal = NA_real_,
+    sd_low = NA_real_, sd_normal = NA_real_, sd_high = NA_real_,
+    F_value = NA_real_, p_anova = NA_real_,
+    welch_F = NA_real_, welch_df1 = NA_real_, welch_df2 = NA_real_, p_welch = NA_real_,
+    eta_sq = NA_real_, kruskal_H = NA_real_, p_kruskal = NA_real_,
     high_minus_low = NA_real_, hl_lwr = NA_real_, hl_upr = NA_real_, hl_p = NA_real_,
-    p_bartlett = NA_real_, p_shapiro = NA_real_
+    high_minus_norm = NA_real_, hn_lwr = NA_real_, hn_upr = NA_real_, hn_p = NA_real_,
+    norm_minus_low = NA_real_, nl_lwr = NA_real_, nl_upr = NA_real_, nl_p = NA_real_,
+    gh_hl_p = NA_real_, gh_hl_lwr = NA_real_, gh_hl_upr = NA_real_,
+    gh_hn_p = NA_real_, gh_hn_lwr = NA_real_, gh_hn_upr = NA_real_,
+    gh_nl_p = NA_real_,
+    gh_hl_q = NA_real_, gh_hl_df = NA_real_, gh_hn_q = NA_real_, gh_hn_df = NA_real_,
+    gh_nl_q = NA_real_, gh_nl_df = NA_real_,
+    pattern = NA_character_,
+    bartlett_K2 = NA_real_, bartlett_df = NA_real_, p_bartlett = NA_real_,
+    shapiro_W = NA_real_, p_shapiro = NA_real_
   )
 
   # need at least two classes with two or more years apiece
@@ -1242,13 +1328,62 @@ anova_by_class <- function(d, yv) {
     sm  <- summary(fit)[[1]]
     kw  <- stats::kruskal.test(fml, data = d)
 
-    # Tukey pairwise; the High - Low contrast is the one of interest
-    tk <- stats::TukeyHSD(fit)$snow_class
-    hl <- if ("High-Low" %in% rownames(tk)) tk["High-Low", ] else rep(NA_real_, 4)
-
-    cls_mean <- function(k) if (sum(d$snow_class == k) > 0) {
+    cls_mean_ <- function(k) if (sum(d$snow_class == k) > 0) {
       mean(d[[yv]][d$snow_class == k])
     } else NA_real_
+    cls_mean <- cls_mean_
+    cls_sd <- function(k) if (sum(d$snow_class == k) > 1) {
+      stats::sd(d[[yv]][d$snow_class == k])
+    } else NA_real_
+
+    # full test objects kept so the statistic and df can be reported, not just p
+    wt <- tryCatch(stats::oneway.test(fml, data = d, var.equal = FALSE),
+                   error = function(e) NULL)
+    bt <- tryCatch(stats::bartlett.test(fml, data = d), error = function(e) NULL)
+    st <- tryCatch(stats::shapiro.test(stats::residuals(fit)), error = function(e) NULL)
+
+    # Tukey pairwise. All three contrasts are kept: a claim that high years
+    # differ from BOTH normal and low needs High-Low and High-Normal, not just
+    # the first. p values are Tukey-adjusted for the three comparisons.
+    tk  <- stats::TukeyHSD(fit)$snow_class
+    grab <- function(m, nm) if (nm %in% rownames(m)) m[nm, ] else rep(NA_real_, ncol(m))
+    hl <- grab(tk, "High-Low")
+    hn <- grab(tk, "High-Normal")
+    nl <- grab(tk, "Normal-Low")
+
+    # Games-Howell is the one to report: it matches the Welch omnibus test.
+    # Tukey is kept alongside so the two can be shown to agree where the
+    # variances are homogeneous.
+    gh    <- games_howell(d[[yv]], d$snow_class)
+    gh_hl <- grab(gh, "High-Low")
+    gh_hn <- grab(gh, "High-Normal")
+    gh_nl <- grab(gh, "Normal-Low")
+
+    # plain-language ordering, so the pattern can be read without decoding
+    # three p values. "=" means not separable at 0.05, not proven equal.
+    sig <- function(v) is.finite(v[4]) && v[4] < 0.05
+    pattern <- local({
+      hl <- gh_hl; hn <- gh_hn; nl <- gh_nl      # pattern follows Games-Howell
+    if (!any(is.finite(c(hl[4], hn[4], nl[4])))) {
+      NA_character_
+    } else if (sig(hl) && sig(hn) && sig(nl)) {
+      "all three differ"
+    } else if (sig(hl) && sig(hn)) {
+      "High differs from Normal and Low"
+    } else if (sig(hl) && sig(nl)) {
+      "Low differs from Normal and High"
+    } else if (sig(hn) && sig(nl)) {
+      "Normal differs from High and Low"
+    } else if (sig(hl)) {
+      "High differs from Low only"
+    } else if (sig(hn)) {
+      "High differs from Normal only"
+    } else if (sig(nl)) {
+      "Normal differs from Low only"
+    } else {
+      "no pair differs"
+    }})
+
 
     dplyr::tibble(
       n              = nrow(d),
@@ -1258,25 +1393,58 @@ anova_by_class <- function(d, yv) {
       mean_low       = cls_mean("Low"),
       mean_normal    = cls_mean("Normal"),
       mean_high      = cls_mean("High"),
+      sd_low         = cls_sd("Low"),
+      sd_normal      = cls_sd("Normal"),
+      sd_high        = cls_sd("High"),
       F_value        = sm[["F value"]][1],
       p_anova        = sm[["Pr(>F)"]][1],
       # Welch does not assume equal variance across the three snow classes.
       # Prefer it to p_anova: it costs almost nothing when the variances match
       # and is the correct test when they do not.
-      p_welch        = tryCatch(
-                         stats::oneway.test(fml, data = d, var.equal = FALSE)$p.value,
-                         error = function(e) NA_real_),
+      welch_F        = if (is.null(wt)) NA_real_ else unname(wt$statistic),
+      welch_df1      = if (is.null(wt)) NA_real_ else unname(wt$parameter[1]),
+      welch_df2      = if (is.null(wt)) NA_real_ else unname(wt$parameter[2]),
+      p_welch        = if (is.null(wt)) NA_real_ else wt$p.value,
       # share of variance explained by snow class
       eta_sq         = sm[["Sum Sq"]][1] / sum(sm[["Sum Sq"]]),
+      kruskal_H      = unname(kw$statistic),
       p_kruskal      = kw$p.value,
+      # High - Low
       high_minus_low = hl[1],
       hl_lwr         = hl[2],
       hl_upr         = hl[3],
       hl_p           = hl[4],
-      p_bartlett     = tryCatch(stats::bartlett.test(fml, data = d)$p.value,
-                                error = function(e) NA_real_),
-      p_shapiro      = tryCatch(stats::shapiro.test(stats::residuals(fit))$p.value,
-                                error = function(e) NA_real_)
+      # High - Normal
+      high_minus_norm = hn[1],
+      hn_lwr          = hn[2],
+      hn_upr          = hn[3],
+      hn_p            = hn[4],
+      # Normal - Low
+      norm_minus_low  = nl[1],
+      nl_lwr          = nl[2],
+      nl_upr          = nl[3],
+      nl_p            = nl[4],
+      # Games-Howell equivalents - report these, not the Tukey p values
+      gh_hl_p         = gh_hl[4],
+      gh_hl_lwr       = gh_hl[2],
+      gh_hl_upr       = gh_hl[3],
+      gh_hn_p         = gh_hn[4],
+      gh_hn_lwr       = gh_hn[2],
+      gh_hn_upr       = gh_hn[3],
+      gh_nl_p         = gh_nl[4],
+      # Games-Howell studentised range statistic and Welch df for each pair
+      gh_hl_q         = gh_hl[5],
+      gh_hl_df        = gh_hl[6],
+      gh_hn_q         = gh_hn[5],
+      gh_hn_df        = gh_hn[6],
+      gh_nl_q         = gh_nl[5],
+      gh_nl_df        = gh_nl[6],
+      pattern        = pattern,
+      bartlett_K2    = if (is.null(bt)) NA_real_ else unname(bt$statistic),
+      bartlett_df    = if (is.null(bt)) NA_real_ else unname(bt$parameter),
+      p_bartlett     = if (is.null(bt)) NA_real_ else bt$p.value,
+      shapiro_W      = if (is.null(st)) NA_real_ else unname(st$statistic),
+      p_shapiro      = if (is.null(st)) NA_real_ else st$p.value
     )
   }, error = function(e) na_row)
 
@@ -1318,6 +1486,78 @@ print(
     dplyr::arrange(region_type, region),
   n = 50
 )
+
+# -----------------------------------------------------------------------------
+# 7.8b Could a snow-class bias leak into the ERA5-Land trend?
+# -----------------------------------------------------------------------------
+# A bias that differs between high and low snow years only changes the ERA5-Land
+# TREND if those years are unevenly spread through the record (e.g. the high
+# years bunched early). If they are spread across the record, the bias has no
+# trend of its own and the ERA5-Land and manual trends are unaffected.
+# Two checks per region:
+#   - timing: mean year of High vs Low years, and how many of each fall in the
+#     first vs second half of the record (Wilcoxon on year, High vs Low)
+#   - net effect: Mann-Kendall / Sen's slope on the region-year bias itself,
+#     expressed as % of mean SWE per decade so it sits on the same scale as the
+#     trend differences in Figs A8 / A13 (a bias trend IS the ERA5 - manual
+#     trend difference for that region)
+
+mid_year <- (start_year + end_year) / 2
+
+snow_class_timing <- region_year_snow %>%
+  dplyr::group_by(region_type, region) %>%
+  dplyr::group_modify(function(.x, .y) {
+    hi <- .x$year[.x$snow_class == "High"]
+    lo <- .x$year[.x$snow_class == "Low"]
+    .x <- dplyr::arrange(.x, year)
+    sen_mm  <- trend::sens.slope(.x$mean_bias)$estimates      # mm per year
+    sen_pct <- trend::sens.slope(.x$percent_bias)$estimates   # % points per year
+    mk      <- Kendall::MannKendall(.x$mean_bias)
+    mkp     <- Kendall::MannKendall(.x$percent_bias)
+    wt      <- if (length(hi) >= 2 && length(lo) >= 2) {
+      stats::wilcox.test(hi, lo, exact = FALSE)
+    } else NULL
+    dplyr::tibble(
+      n_years          = nrow(.x),
+      first_year       = min(.x$year),
+      last_year        = max(.x$year),
+      mean_year_high   = mean(hi),
+      mean_year_low    = mean(lo),
+      n_high_early     = sum(hi <= mid_year),
+      n_high_late      = sum(hi >  mid_year),
+      n_low_early      = sum(lo <= mid_year),
+      n_low_late       = sum(lo >  mid_year),
+      timing_W         = if (!is.null(wt)) unname(wt$statistic) else NA_real_,
+      timing_p         = if (!is.null(wt)) wt$p.value else NA_real_,
+      bias_mk_tau      = as.numeric(mk$tau),
+      bias_mk_p        = as.numeric(mk$sl),
+      bias_sen_mm_dec  = 10 * unname(sen_mm),
+      # Sen's slope of the bias relative to mean SWE, % per decade
+      bias_sen_pct_dec = 100 * 10 * unname(sen_mm) / mean(.x$mean_obs),
+      pctbias_mk_tau   = as.numeric(mkp$tau),
+      pctbias_mk_p     = as.numeric(mkp$sl),
+      pctbias_sen_dec  = 10 * unname(sen_pct)
+    )
+  }) %>%
+  dplyr::ungroup()
+
+# flag the regions where the snow class mattered (Welch p < 0.05 on either metric)
+snow_class_timing <- snow_class_timing %>%
+  dplyr::left_join(
+    snow_class_anova %>%
+      dplyr::group_by(region_type, region) %>%
+      dplyr::summarise(min_p_welch = min(p_welch, na.rm = TRUE), .groups = "drop"),
+    by = c("region_type", "region")
+  ) %>%
+  dplyr::mutate(class_sig = min_p_welch < 0.05) %>%
+  dplyr::arrange(region_type, dplyr::desc(class_sig), region)
+
+cat("\nSnow-class timing and bias drift (regions with a significant snow-class effect first):\n")
+print(snow_class_timing %>%
+        dplyr::select(region_type, region, class_sig, mean_year_high, mean_year_low,
+                      n_high_early, n_high_late, n_low_early, n_low_late, timing_W, timing_p,
+                      bias_mk_tau, bias_mk_p, bias_sen_pct_dec),
+      n = 100, width = Inf)
 
 # -----------------------------------------------------------------------------
 # 7.9 Plots
@@ -1367,10 +1607,18 @@ plot_bias_by_tercile <- function(rt, drop_normal = FALSE, percent = FALSE) {
     "ERA5-Land - manual survey SWE (mm)"
   }
 
+  # basins use the same short labels as the correlation and mean SWE figures
+  xlab_fun <- if (identical(rt, "Basin")) short_basin else ggplot2::waiver()
+  xlabs    <- if (identical(rt, "Basin")) short_basin(d$region) else d$region
+
   ggplot2::ggplot(d, ggplot2::aes(x = region, y = .data[[yv]], fill = snow_class)) +
     ggplot2::geom_hline(yintercept = 0, colour = "grey30", linewidth = 0.6) +
     ggplot2::geom_boxplot(outlier.alpha = 0.2) +
-    theme_box_er() +
+    ggplot2::scale_x_discrete(labels = xlab_fun) +
+    theme_box_er(
+      angle    = label_angle_for(rt),
+      margin_l = if (label_angle_for(rt) == 45) left_margin_for(xlabs) else 5.5
+    ) +
     ggplot2::labs(x = rt, y = ylab, fill = NULL)
 }
 
@@ -1404,7 +1652,10 @@ plot_site_highlow <- function(rt) {
     ggplot2::geom_hline(yintercept = 0, colour = "grey30", linewidth = 0.6) +
     ggplot2::geom_boxplot(outlier.shape = NA, alpha = 0.7) +
     ggplot2::geom_jitter(width = 0.15, size = 1.8, alpha = 0.7) +
-    theme_box_er() +
+    theme_box_er(
+      angle    = label_angle_for(rt),
+      margin_l = if (label_angle_for(rt) == 45) left_margin_for(d$region) else 5.5
+    ) +
     ggplot2::theme(legend.position = "none") +
     ggplot2::labs(x = rt,
                   y = "High minus low snow year bias (mm SWE, per site)",
@@ -1441,27 +1692,33 @@ plot_site_year_mag <- function(rt, colour_by_year = TRUE) {
 
 p_snow_basin_scatter <- plot_bias_vs_snow("Basin")
 p_snow_eco_scatter   <- plot_bias_vs_snow("Ecozone")
+p_snow_ep_scatter    <- plot_bias_vs_snow("Ecoprovince")
 p_snow_er_scatter    <- plot_bias_vs_snow("Ecoregion")
 
 p_snow_basin_box <- plot_bias_by_tercile("Basin", percent = T)
 p_snow_eco_box   <- plot_bias_by_tercile("Ecozone")
+p_snow_ep_box    <- plot_bias_by_tercile("Ecoprovince")
 p_snow_er_box    <- plot_bias_by_tercile("Ecoregion")
 
 # percent versions - the honest reading where a region spans a wide SWE range
 p_snow_basin_box_pct <- plot_bias_by_tercile("Basin",     percent = TRUE)
 p_snow_eco_box_pct   <- plot_bias_by_tercile("Ecozone",   percent = TRUE)
+p_snow_ep_box_pct    <- plot_bias_by_tercile("Ecoprovince", percent = TRUE)
 p_snow_er_box_pct    <- plot_bias_by_tercile("Ecoregion", percent = TRUE)
 
 p_snow_basin_sens <- plot_snow_sensitivity("Basin")
 p_snow_eco_sens   <- plot_snow_sensitivity("Ecozone")
+p_snow_ep_sens    <- plot_snow_sensitivity("Ecoprovince")
 p_snow_er_sens    <- plot_snow_sensitivity("Ecoregion")
 
 p_site_year_basin <- plot_site_year_mag("Basin")
 p_site_year_eco   <- plot_site_year_mag("Ecozone")
+p_site_year_ep    <- plot_site_year_mag("Ecoprovince")
 p_site_year_er    <- plot_site_year_mag("Ecoregion")
 
 p_site_highlow_basin <- plot_site_highlow("Basin")
 p_site_highlow_eco   <- plot_site_highlow("Ecozone")
+p_site_highlow_ep    <- plot_site_highlow("Ecoprovince")
 p_site_highlow_er    <- plot_site_highlow("Ecoregion")
 
 p_snow_basin_scatter
@@ -1487,15 +1744,48 @@ p_snow_sites <- ggplot2::ggplot(
                 title = "Within-site bias response to snow year magnitude")
 p_snow_sites
 
- write.csv(tercile_summary,       paste0(savepath, "bias_by_snow_tercile.csv"), row.names = FALSE)
- write.csv(snow_year_stats,       paste0(savepath, "bias_snow_year_stats.csv"), row.names = FALSE)
- write.csv(site_level_snow_stats, paste0(savepath, "bias_snow_year_sitelevel.csv"), row.names = FALSE)
- write.csv(site_highlow,          paste0(savepath, "bias_site_highlow.csv"), row.names = FALSE)
- write.csv(site_highlow_stats,    paste0(savepath, "bias_site_highlow_stats.csv"), row.names = FALSE)
- write.csv(site_year_mag_stats,   paste0(savepath, "bias_site_year_magnitude.csv"), row.names = FALSE)
- write.csv(snow_class_anova,      paste0(savepath, "bias_snow_class_anova.csv"), row.names = FALSE)
+ write.csv(tercile_summary,       paste0(savepath, "bias_by_snow_tercile", scope, ".csv"), row.names = FALSE)
+ write.csv(snow_year_stats,       paste0(savepath, "bias_snow_year_stats", scope, ".csv"), row.names = FALSE)
+ write.csv(site_level_snow_stats, paste0(savepath, "bias_snow_year_sitelevel", scope, ".csv"), row.names = FALSE)
+ write.csv(site_highlow,          paste0(savepath, "bias_site_highlow", scope, ".csv"), row.names = FALSE)
+ write.csv(site_highlow_stats,    paste0(savepath, "bias_site_highlow_stats", scope, ".csv"), row.names = FALSE)
+ write.csv(site_year_mag_stats,   paste0(savepath, "bias_site_year_magnitude", scope, ".csv"), row.names = FALSE)
+ write.csv(snow_class_anova,      paste0(savepath, "bias_snow_class_anova", scope, ".csv"), row.names = FALSE)
+ write.csv(snow_class_timing,     paste0(savepath, "bias_snow_class_timing", scope, ".csv"), row.names = FALSE)
   
 # ggplot2::ggsave("p_snow_basin_scatter.png", p_snow_basin_scatter, dpi = 900, path = savepath)
-# ggplot2::ggsave("p_snow_basin_box.png",     p_snow_basin_box,     dpi = 900, path = savepath)
+ # --- grouped snow-tercile box plots, all four groupings, both metrics -------
+ # Region on the x axis, snow year as the fill. ONE set only - no scope suffix,
+ # so a run overwrites the previous one. The manuscript uses the MRB-scope
+ # version; re-running under scope "NWT" will replace these files.
+ fig_path <- paste0(user, "/Documents/NT_Hydrology/Figures")
+ dir.create(fig_path, showWarnings = FALSE, recursive = TRUE)
+
+ for (rt in c("Basin", "Ecozone", "Ecoprovince", "Ecoregion")) {
+   tag <- tolower(rt)
+   # vertical ecoregion labels eat a lot of height; without extra canvas the
+   # panel shrinks until the rotated y-axis title no longer fits beside it
+   h <- if (label_angle_for(rt) == 90) 9 else 6
+   ggplot2::ggsave(paste0("p_bias_tercile_mm_",  tag, ".png"),
+                   plot_bias_by_tercile(rt),                  dpi = 900,
+                   path = fig_path, width = 9, height = h)
+   ggplot2::ggsave(paste0("p_bias_tercile_pct_", tag, ".png"),
+                   plot_bias_by_tercile(rt, percent = TRUE),  dpi = 900,
+                   path = fig_path, width = 9, height = h)
+ }
+ cat("\nWrote 8 grouped tercile box plots (scope", scope, ") to", fig_path, "\n")
+
+ # --- combined basin figure for the main text: (a) mm bias, (b) percent bias ---
+ # One shared legend, x axis labels on the bottom panel only.
+ p_tercile_basin <- patchwork::wrap_plots(
+     plot_bias_by_tercile("Basin") +
+       ggplot2::theme(axis.text.x  = ggplot2::element_blank(),
+                      axis.title.x = ggplot2::element_blank()),
+     plot_bias_by_tercile("Basin", percent = TRUE),
+     ncol = 1, guides = "collect") +
+   patchwork::plot_annotation(tag_levels = "a", tag_prefix = "(", tag_suffix = ")") &
+   ggplot2::theme(plot.tag = ggplot2::element_text(size = 14, face = "bold"))
+ ggplot2::ggsave(paste0("p_bias_tercile_basin_ab_", scope, ".png"), p_tercile_basin,
+                 dpi = 900, path = fig_path, width = 9, height = 10)
 # ggplot2::ggsave("p_snow_basin_sens.png",    p_snow_basin_sens,    dpi = 900, path = savepath)
 # ggplot2::ggsave("p_snow_sites.png",         p_snow_sites,         dpi = 900, path = savepath)

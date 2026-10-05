@@ -966,3 +966,37 @@ as_basin_sf <- function(x, name) {
     sf::st_cast("MULTIPOLYGON") %>%
     dplyr::select(basin, geometry)
 }
+
+
+# Basin colours and short axis labels shared by every basin figure, so the
+# correlation plot (Fig. A3), the mean SWE boxplots and the bias boxplots all
+# match. Colours are the default ggplot hue palette for the 11 basins, the same
+# values used for the leaflet site map in ERA5_snowtrends_map_hourly.R.
+basin_cols <- c(
+  "Athabasca"                 = "#F8766D",
+  "Great Slave Lake - other"  = "#D89000",
+  "Hay"                       = "#B79F00",
+  "Liard"                     = "#7CAE00",
+  "Lower Slave"               = "#00BA38",
+  "Mackenzie River main stem" = "#00BFC4",
+  "Peace"                     = "#00C1DE",
+  "Peel"                      = "#00B0F6",
+  "Snare"                     = "#9590FF",
+  "Taltson"                   = "#E76BF3",
+  "Yellowknife"               = "#FF61C3"
+)
+
+basin_labels <- c(
+  "Great Slave Lake - other"  = "GSL - other",
+  "Mackenzie River main stem" = "MR - main stem"
+)
+
+# for scale_x_discrete(labels = ...): shorten the two long names, pass the rest
+short_basin <- function(x) ifelse(x %in% names(basin_labels), basin_labels[x], x)
+
+# mix a colour towards white (amount > 0) or black (amount < 0)
+shade_col <- function(col, amount) {
+  m <- grDevices::col2rgb(col) / 255
+  m <- if (amount > 0) m + (1 - m) * amount else m * (1 + amount)
+  grDevices::rgb(m[1, ], m[2, ], m[3, ])
+}

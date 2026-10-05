@@ -5,7 +5,7 @@
 # 4) Ensure prefixes are correct as per code below
 
 tb_plot_triggers <- function(
-    select_year = 2022, # year to run analysis
+    select_year = 2024, # year to run analysis
     basin = "Hay", # name of basin to run analysis. Note: code is currently only written for Hay
     station_number = "07OB001", # hydrometric station to calculate flows
     y_max = NA, # maximum value on y-axis

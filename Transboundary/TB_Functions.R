@@ -2,18 +2,26 @@
 
 # Call all functions from other worksheets into active environment
 
+report_year <- 2025 # year the technical report is for - change this each year
+
 # Define file paths
 
 user <- paste0("C:/Users/", tolower(Sys.getenv("USERNAME"))) # Extract system username
+source(paste0(user, "/Documents/R_Scripts/Packages/Transboundary/tb_source_functions.R")) # loads all functions (see README.md)
 tb_path <- paste0(package_path, "Transboundary/") # Filepath for transboundary scripts
 file_path <- paste0(tb_path, "data/") # path for data files
+
+# This year's AB licence and usage files must be in data/<report_year>/ - see README.md
+if (!dir.exists(paste0(file_path, report_year))) {
+  stop("Folder ", file_path, report_year, " does not exist. Create it and add this year's AB files (see README.md).", call. = FALSE)
+}
 
 ###################################################################################################
 
 # Function for generating plots for triggers and objectives
 
 tb_plot_triggers(
-  select_year = 2021, # year to run analysis
+  select_year = report_year, # year to run analysis
   basin = "Hay", # name of basin to run analysis. Note: code is currently only written for Hay
   station_number = "07OB001", # hydrometric station to calculate flows
   y_max = NA, # maximum value on y-axis
@@ -26,7 +34,7 @@ tb_plot_triggers(
 )
 
 tb_calc_triggers(
-  select_year = 2021,
+  select_year = report_year,
   basin = "Hay",
   station_number = "07OB001"
 )

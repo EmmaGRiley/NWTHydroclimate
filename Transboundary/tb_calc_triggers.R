@@ -17,7 +17,7 @@
 # flow_border_cmd = flow at border in cubic metres per month
 
 tb_calc_triggers <- function(
-    select_year = 2022,
+    select_year = 2024,
     basin = "Hay",
     station_number = "07OB001"
 )
@@ -190,7 +190,7 @@ tb_calc_triggers <- function(
   #   GW_Use <- berryFunctions::insertRows(GW_Use, c(nrow(GW_Use)+1:(12-nrow(GW_Use)-1)), new = NA)
   #   }
 
-  if(nrow(SW_Use) < 12) {
+  if(!is.null(usage_detail) && nrow(SW_Use) < 12) {
     month.df <- month.df[1:nrow(SW_Use),]
     flow_data <- flow_data[1:nrow(SW_Use),]
   }
@@ -243,14 +243,19 @@ tb_calc_triggers <- function(
 
 }
 
-#Determining use vs allocation values for SW and GW
+##Determining use vs allocation values for SW and GW
 # b <- sum(month.df$allo_m3_GW)
 # a <- sum(GW_Use$GW_Use)
 # 
-# round((a/b)*100, 1)
+#  round((a/b)*100, 1)
 # 
-# b <- sum(month.df$allo_m3_SW)
-# a <- sum(SW_Use$SW_Use)
+#  b <- sum(month.df$allo_m3_SW + 1451) #have to add in traditional use manually
+#  a <- sum(SW_Use$SW_Use)
 # 
-# round((a/b)*100, 1)
-
+#  round((a/b)*100, 1)
+#  
+##total use vs allocation
+#  b <- sum(month.df$allo_m3)
+#  a <- sum(GW_Use$GW_Use, SW_Use$SW_Use, 1451) #have to add in traditional use manually
+#  
+#  round((a/b)*100, 1)

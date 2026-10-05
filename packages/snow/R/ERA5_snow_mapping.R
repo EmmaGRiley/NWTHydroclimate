@@ -1,5 +1,6 @@
 #ERA5 snow mapping
 #for mapping ERA5-land swe only
+#See README_snow_scripts.md in the snow package folder before running.
 
 library(leaflet)
 
@@ -65,11 +66,24 @@ ldensity = 0.1
 data = md_3
 exclude_sites = NA
 start_year = 1995
-end_year = 2026
+end_year = current_year
 min_year = abs(start_year-end_year) * 0.75
 
-#set web shot path
-Sys.setenv(PATH = paste0(user, "/Documents/Modelling/phantomjs/phantomjs/bin")) #can install phantomjs executable here: webshot::install_phantomjs()
+#set web shot path (added to the end of PATH rather than replacing it)
+Sys.setenv(PATH = paste(Sys.getenv("PATH"), paste0(user, "/Documents/Modelling/phantomjs/phantomjs/bin"), sep = ";")) #can install phantomjs executable here: webshot::install_phantomjs()
+
+#check the ERA5 input file exists and includes current_year before going further
+era5_file <- if (file == "max_spring") {
+  paste0(user, "/Documents/R_Scripts/Packages/snow/data/SWEmax_dataset/ERA5_updatedfeb_may.csv")
+} else {
+  paste0(user, "/Documents/R_Scripts/Packages/snow/data/SWEmax_dataset/", file, "_combined_max_snow.csv")
+}
+if (!file.exists(era5_file)) {
+  stop("ERA5 file not found: ", era5_file, "\nCheck `file` above, or run ERA5_spring_snow_analysis.R first (see README).", call. = FALSE)
+}
+if (file != "max_spring" && !(paste0("Snow_", current_year) %in% names(read.csv(era5_file, nrows = 1)))) {
+  stop(basename(era5_file), " has no Snow_", current_year, " column. Run ERA5_spring_snow_analysis.R for ", current_year, " first.", call. = FALSE)
+}
 
 if (file == "max_spring"){
   ERA5_snow <- read.csv(paste0(user, "/Documents/R_Scripts/Packages/snow/data/SWEmax_dataset/ERA5_updatedfeb_may.csv")) %>%
@@ -323,12 +337,12 @@ if (manual_sites == TRUE){
   
   if(add_legend == TRUE){
     map <- map %>%
-      addLegend(
+      leaflet::addLegend(
         position = "bottomleft",
         colors = c("#D73027", "#FC8D59", "#FEE090","#FFFFBF","#E0F3F8","#91BFDB", "#4575B4"),
         labels = c("< 50%", "51 - 70%", "71 - 90%", "91 - 110%", 
                    "111 - 130%", "131 - 150%", "> 151%"),
-        title = paste0("Snow Water Equivalent", "<br>", file, year,  "<br>", "Relative to Average"),
+        title = paste0("Snow Water Equivalent", "<br>", file, current_year,  "<br>", "Relative to Average"),
         opacity = 1
       )
   }
@@ -336,7 +350,11 @@ if (manual_sites == TRUE){
 map
 
 if(save == T){
-  htmlwidgets::saveWidget(map, file = paste0("map_MRB_mo", file, ".html"), selfcontained = TRUE)
-  webshot::webshot(paste0("map_MRB_mo", file, ".html"), paste0("map_MRB_mo", file, ".png"), delay = 20,  vwidth = 1000, vheight = 800, zoom = 1)
+  output_dir <- paste0(user, "/Documents/NT_Hydrology/Figures/") # maps are saved here
+  dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
+  out_base <- paste0(output_dir, "map_MRB_mo", file, current_year)
+  htmlwidgets::saveWidget(map, file = paste0(out_base, ".html"), selfcontained = TRUE)
+  webshot::webshot(paste0(out_base, ".html"), paste0(out_base, ".png"), delay = 20,  vwidth = 1000, vheight = 800, zoom = 1)
+  message("Map saved to ", out_base, ".html / .png")
 }
    

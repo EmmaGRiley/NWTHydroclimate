@@ -2,6 +2,9 @@
 
 user <- paste0("C:/Users/", tolower(Sys.getenv("USERNAME")))
 
+#year to summarize - defaults to the current calendar year. Type a year (e.g. 2027) to summarize a different one
+summary_year <- lubridate::year(Sys.Date())
+
 #bring in ss data (as GNWT employee)
 source(paste0(user, "/Documents/R_Scripts/Packages/snow/R/R_oracle_connect.R"))
 
@@ -64,7 +67,7 @@ SWEsummary <- function(data,
                           meanSWE_allyears = round(mean(yearlySWE[year<curmaxyear], na.rm=TRUE)*10, 2),
                           pernorm = ((meanSWE_cur/meanSWE01_20)*100),
                           pernorm_allyrs = ((meanSWE_cur/meanSWE_allyears)*100),
-                          rank2026 = (rank[year==curmaxyear]),
+                          rank_current = (rank[year==curmaxyear]),
                           Long = mean(long),
                           Lat = mean(lat))
      
@@ -75,15 +78,21 @@ SWEsummary <- function(data,
      }
 
 
+#Snow_Mapping_April1_<year>.R sets options(swe_summary.functions_only = TRUE) so that sourcing this script
+#only loads the functions and data. The summary table and boxplot below are skipped in that case.
+run_outputs <- !isTRUE(getOption("swe_summary.functions_only"))
+
+if (run_outputs) {
 SWEsummary(data = md_3,
            surface="upland", 
            minyear=2000, 
            maxyear=2021,
-           curmaxyear=2026,
+           curmaxyear=summary_year,
            flags = c("Y", "HS", "Sk", "P", "Sk_2"),
            ldensity = 0.1,
            act="A",
            write = T)
+}
 
 #boxplot function - yearly mean SWE separated by region, with current year highlighted in blue
 regional_boxplot = function (surface,
@@ -141,9 +150,10 @@ plot
 
 }
 
+if (run_outputs) {
 regional_boxplot(surface = "upland",
                  flags = c("Y", "HS"), #("Y", "HS")
-                 curyear = 2024, #current year
+                 curyear = summary_year, #current year
                  act = "A",
                  save_path = paste0(user, "/Documents/NT_Hydrology/Figures"),
                  plot_name = "Regional_boxplot",
@@ -156,6 +166,7 @@ regional_boxplot(surface = "upland",
                  y_min = NA,
                  y_max = NA,
                  numbersites = 3)
+}
 
 
 

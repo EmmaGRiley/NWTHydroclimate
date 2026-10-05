@@ -2,6 +2,7 @@
 # Downloads ERA5-Land snow depth (m water equivalent) for a user-specified date
 # and compares it against the April 1 max (from snow_depth_April_max_2026.nc) as
 # a percentage. Maps the percent of snow remaining relative to the April 1 max.
+# See README_snow_scripts.md in the snow package folder before running.
 
 `%>%` <- magrittr::`%>%`
 `%!in%` <- Negate(`%in%`)
@@ -11,18 +12,19 @@ user <- paste0("C:/Users/", tolower(Sys.getenv("USERNAME"))) # PC version
 
 #set up file directory
 folder <- paste0(user, "/Documents/R_scripts/Packages/snow/data/")
+era5_dir <- paste0(folder, "SWEmax_dataset/") # ERA5 .nc files are downloaded to / read from here
 shapefile_path <- paste0(user, "/Documents/Shapefiles/")
 
-#might need to run below 
-install.packages(c("ecmwfr", "ncdf4", "automap", "foreach", "doSNOW", "pbapply", "cowplot"),
-                dependencies = TRUE)
-#note - workflow does not work with terra versions > 1.8-60
-install.packages("terra",
-  repos = "https://packagemanager.posit.co/cran/2024-12-01",
-  type = "win.binary"
-)
-install.packages(c('progress', 'viridis', 'usethis'))
-install.packages(paste0(user, "/Documents/Github/KrigR"), repos = NULL, type = "source")
+# FIRST-TIME SETUP ONLY - run these lines once on a new computer (highlight and Ctrl+Enter), not every time:
+# install.packages(c("ecmwfr", "ncdf4", "automap", "foreach", "doSNOW", "pbapply", "cowplot"),
+#                  dependencies = TRUE)
+# #note - workflow does not work with terra versions > 1.8-60
+# install.packages("terra",
+#   repos = "https://packagemanager.posit.co/cran/2024-12-01",
+#   type = "win.binary"
+# )
+# install.packages(c('progress', 'viridis', 'usethis'))
+# install.packages(paste0(user, "/Documents/Github/KrigR"), repos = NULL, type = "source")
 
 # Required libraries
 library(KrigR)
@@ -31,7 +33,6 @@ library(dplyr)
 library(sf)
 library(leaflet)
 library(ncdf4)
-library(doMC)
 
 # ---- User inputs -------------------------------------------------------------
 
@@ -57,9 +58,16 @@ long_min <- -140
 long_max <- -95
 interval <- 0.1
 
-# ECMWF API credentials
+# ECMWF API credentials (stored in your .Renviron file - see README)
 api_user <- Sys.getenv("CDS_USER")
 api_key  <- Sys.getenv("CDS_KEY")
+if (api_user == "" || api_key == "") {
+  stop("CDS_USER / CDS_KEY not found. Add them to your .Renviron file and restart R (see README).", call. = FALSE)
+}
+if (!file.exists(baseline_file)) {
+  stop("Baseline file not found: ", baseline_file,
+       "\nRun ERA5_spring_snow_analysis.R for ", current_year, " first (see README).", call. = FALSE)
+}
 
 # Mapping options
 map_mode           <- "swe"  # "percent" = % of April 1 max remaining; "swe" = absolute SWE (mm w.e.) "diff" = compare target date to baseline file
@@ -69,8 +77,8 @@ add_legend         <- TRUE
 save               <- TRUE
 add_basin          <- TRUE
 
-# Set webshot path
-Sys.setenv(PATH = paste0(user, "/Documents/Modelling/phantomjs/phantomjs/bin"))
+# Set webshot path (added to the end of PATH rather than replacing it)
+Sys.setenv(PATH = paste(Sys.getenv("PATH"), paste0(user, "/Documents/Modelling/phantomjs/phantomjs/bin"), sep = ";"))
 
 # ---- Download ERA5-Land SWE for target date ----------------------------------
 
@@ -80,7 +88,7 @@ date_start <- paste0(target_date, " 00:00")
 date_stop  <- paste0(target_date, " 23:00")
 
 target_fname <- paste0("snow_depth_target_", gsub("-", "", target_date))
-target_nc    <- paste0(target_fname, ".nc")
+target_nc    <- paste0(era5_dir, target_fname, ".nc")
 
 if (!file.exists(target_nc)) {
   cat(sprintf("\nDownloading ERA5-Land SWE for %s...\n", target_date))
@@ -95,7 +103,7 @@ if (!file.exists(target_nc)) {
     TStep         = 1,
     FUN           = "none",
     Extent        = study_extent,
-    Dir           = getwd(),
+    Dir           = era5_dir,
     FileName      = target_fname,
     FileExtension = ".nc",
     API_User      = api_user,
@@ -316,12 +324,15 @@ map
 # ---- Save -------------------------------------------------------------------
 
 if (save) {
-  out_base <- paste0("map_snow_", map_mode, "_", gsub("-", "", target_date))
+  output_dir <- paste0(user, "/Documents/NT_Hydrology/Figures/") # maps are saved here
+  dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
+  out_base <- paste0(output_dir, "map_snow_", map_mode, "_", gsub("-", "", target_date))
   htmlwidgets::saveWidget(map, file = paste0(out_base, ".html"),
                           selfcontained = TRUE)
   webshot::webshot(paste0(out_base, ".html"),
                    paste0(out_base, ".png"),
                    delay = 20, vwidth = 1000, vheight = 800, zoom = 1)
+  message("Map saved to ", out_base, ".html / .png")
 }
 
 # ---- Basin-averaged value (mean SWE in "swe" mode) ---------------------------
@@ -341,7 +352,9 @@ basin_mean <- function(points_sf, basin_sf) {
   )
 }
 
-cat(sprintf("\nBasin-averaged value (mode = %s):\n", map_mode))
-cat("Nahanni:\n"); print(basin_mean(sd_values_sf, Nahanni))
-cat("Liard:\n");   print(basin_mean(sd_values_sf, Liard))
+if (add_basin) {
+  cat(sprintf("\nBasin-averaged value (mode = %s):\n", map_mode))
+  cat("Nahanni:\n"); print(basin_mean(sd_values_sf, Nahanni))
+  cat("Liard:\n");   print(basin_mean(sd_values_sf, Liard))
+}
 
