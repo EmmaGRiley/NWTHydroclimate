@@ -96,6 +96,8 @@ significantonly <- FALSE
 comparemanual <- TRUE
 NWT_clip <- TRUE
 normalized <- FALSE
+# airport-network sites: excluded at NWT scope, which is the GNWT-ECC snow survey
+# network as much as a spatial extent; kept at MRB scope, which takes SWE from any network
 map_exclude_sites <- c("FORT SMITH A", "NORMAN WELLS A")
 
 # Data parameters
@@ -544,7 +546,7 @@ ERA5_snow <- ERA5_snow %>%
     MT = rbind(MapTable, MapTable_canswe) %>%
       dplyr::filter(is.na(longitude)==F) %>%
       dplyr::mutate(NormMagnitude = (Magnitude / (sitemeanswe * 10)) * 100) %>%
-      dplyr::filter(Site_name %!in% map_exclude_sites)
+      dplyr::filter(!NWT_clip | Site_name %!in% map_exclude_sites)
     
     # #filter significant results only
     if (significantonly == T){

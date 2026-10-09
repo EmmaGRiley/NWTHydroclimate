@@ -52,7 +52,8 @@ include_canswe <- (scope == "MRB")
 # drop any site whose nearest ERA5 cell is further away than this
 max_match_km <- 50
 
-# sites excluded from the trend analysis, kept out here too for consistency
+# airport-network sites: excluded at NWT scope, which is the GNWT-ECC snow survey
+# network as much as a spatial extent; kept at MRB scope, which takes SWE from any network
 map_exclude_sites <- c("FORT SMITH A", "NORMAN WELLS A")
 
 shp_path <- paste0(user, "/Documents/R_Scripts/Packages/snow/data/Shapefiles/")
@@ -220,7 +221,7 @@ if (include_canswe) {
 
 table <- table %>%
   dplyr::filter(!is.na(longitude), !is.na(latitude),
-                Site_name %!in% map_exclude_sites)
+                scope == "MRB" | Site_name %!in% map_exclude_sites)
 
 # clip to the NWT boundary or the Mackenzie River Basin
 scope_layer <- if (scope == "MRB") "MackenzieRiverBasin_FDA" else "NWT_ENR_BND_FND"
@@ -545,7 +546,9 @@ matched_data_basin <- matched_data_sf_basin %>%
 
 #optional write out
 #write.csv(matched_data_basin, paste0(savepath, "matched_data_basin", scope, ".csv"), row.names = F)
-matched_data_basin <- read.csv(paste0(savepath, "matched_data_basin", scope, ".csv"))
+# reading the cached copy back in would replace the table just built with an older
+# site set, so the live table is used; uncomment only to reproduce a saved run
+#matched_data_basin <- read.csv(paste0(savepath, "matched_data_basin", scope, ".csv"))
 
 #variability/bias test
 #signed: positive = ERA5-Land reads higher than the manual survey
@@ -1622,6 +1625,44 @@ plot_bias_by_tercile <- function(rt, drop_normal = FALSE, percent = FALSE) {
     ggplot2::labs(x = rt, y = ylab, fill = NULL)
 }
 
+# when the Low / Normal / High years fall in each region's record, one row per
+# region and one tile per year, so any bunching of classes in time is visible
+# directly rather than through a mean year. Rows are grouped by region type;
+# * marks regions with a significant snow-class effect on bias (Welch p < 0.05),
+# and the dashed line is the record midpoint used for the early/late counts.
+plot_snow_class_timeline <- function() {
+  sig <- snow_class_timing %>%
+    dplyr::select(region_type, region, class_sig)
+  d <- region_year_snow %>%
+    dplyr::left_join(sig, by = c("region_type", "region")) %>%
+    dplyr::mutate(
+      label = ifelse(region_type == "Basin", short_basin(region), region),
+      label = ifelse(class_sig %in% TRUE, paste0(label, " *"), label),
+      region_type = factor(region_type, levels = c("Basin", "Ecozone", "Ecoprovince", "Ecoregion"))
+    )
+  # alphabetical top to bottom within each region type
+  d$label <- factor(d$label, levels = rev(sort(unique(d$label))))
+
+  ggplot2::ggplot(d, ggplot2::aes(x = year, y = label, fill = snow_class)) +
+    ggplot2::geom_tile(colour = "white", linewidth = 0.4) +
+    ggplot2::geom_vline(xintercept = mid_year, linetype = "dashed", colour = "grey20") +
+    ggplot2::facet_grid(region_type ~ ., scales = "free_y", space = "free_y") +
+    # ggplot's default three-level palette, as in the tercile box plots
+    ggplot2::scale_fill_manual(values = c(Low = "#F8766D", Normal = "#00BA38", High = "#619CFF"),
+                               drop = FALSE) +
+    ggplot2::scale_x_continuous(breaks = seq(1995, 2025, 5), expand = c(0, 0)) +
+    ggplot2::theme_classic() +
+    ggplot2::theme(
+      panel.border = ggplot2::element_rect(fill = NA, linewidth = 1, colour = "black"),
+      axis.text    = ggplot2::element_text(size = 12),
+      axis.title   = ggplot2::element_text(size = 12),
+      legend.text  = ggplot2::element_text(size = 12),
+      strip.text.y = ggplot2::element_text(size = 12, angle = 0),
+      strip.background = ggplot2::element_rect(fill = "grey92", colour = "black")
+    ) +
+    ggplot2::labs(x = "Year", y = NULL, fill = NULL)
+}
+
 # how strongly each region's bias responds to snow amount, with 95% CI
 plot_snow_sensitivity <- function(rt, stats_tbl = site_level_snow_stats) {
   d <- stats_tbl %>%
@@ -1752,6 +1793,9 @@ p_snow_sites
  write.csv(site_year_mag_stats,   paste0(savepath, "bias_site_year_magnitude", scope, ".csv"), row.names = FALSE)
  write.csv(snow_class_anova,      paste0(savepath, "bias_snow_class_anova", scope, ".csv"), row.names = FALSE)
  write.csv(snow_class_timing,     paste0(savepath, "bias_snow_class_timing", scope, ".csv"), row.names = FALSE)
+ write.csv(region_year_snow %>%
+             dplyr::select(region_type, region, year, n_sites, snow_index, snow_class),
+           paste0(savepath, "snow_class_by_year", scope, ".csv"), row.names = FALSE)
   
 # ggplot2::ggsave("p_snow_basin_scatter.png", p_snow_basin_scatter, dpi = 900, path = savepath)
  # --- grouped snow-tercile box plots, all four groupings, both metrics -------
@@ -1776,16 +1820,30 @@ p_snow_sites
  cat("\nWrote 8 grouped tercile box plots (scope", scope, ") to", fig_path, "\n")
 
  # --- combined basin figure for the main text: (a) mm bias, (b) percent bias ---
- # One shared legend, x axis labels on the bottom panel only.
+ # Legend inside panel (a) to save the white space beside the panels, x axis
+ # labels on the bottom panel only. Text sizes and canvas match the combined
+ # mean SWE / trend basin figure (p_swe_trend_basin_ab) so the two read alike.
+ big_text <- ggplot2::theme(axis.text   = ggplot2::element_text(size = 14),
+                            axis.title  = ggplot2::element_text(size = 18),
+                            legend.text = ggplot2::element_text(size = 14))
  p_tercile_basin <- patchwork::wrap_plots(
-     plot_bias_by_tercile("Basin") +
+     plot_bias_by_tercile("Basin") + big_text +
        ggplot2::theme(axis.text.x  = ggplot2::element_blank(),
-                      axis.title.x = ggplot2::element_blank()),
-     plot_bias_by_tercile("Basin", percent = TRUE),
-     ncol = 1, guides = "collect") +
+                      axis.title.x = ggplot2::element_blank(),
+                      legend.position = "inside",
+                      legend.position.inside = c(0.02, 0.98),
+                      legend.justification = c(0, 1)),
+     plot_bias_by_tercile("Basin", percent = TRUE) + big_text +
+       ggplot2::theme(legend.position = "none"),
+     ncol = 1) +
    patchwork::plot_annotation(tag_levels = "a", tag_prefix = "(", tag_suffix = ")") &
-   ggplot2::theme(plot.tag = ggplot2::element_text(size = 14, face = "bold"))
+   ggplot2::theme(plot.tag = ggplot2::element_text(size = 18, face = "bold"))
  ggplot2::ggsave(paste0("p_bias_tercile_basin_ab_", scope, ".png"), p_tercile_basin,
-                 dpi = 900, path = fig_path, width = 9, height = 10)
+                 dpi = 900, path = fig_path, width = 10, height = 13)
+
+ # --- timing of Low / Normal / High years in each region ---------------------
+ n_rows <- dplyr::n_distinct(paste(region_year_snow$region_type, region_year_snow$region))
+ ggplot2::ggsave(paste0("p_snow_class_timeline_", scope, ".png"), plot_snow_class_timeline(),
+                 dpi = 900, path = fig_path, width = 11, height = 1.5 + 0.28 * n_rows)
 # ggplot2::ggsave("p_snow_basin_sens.png",    p_snow_basin_sens,    dpi = 900, path = savepath)
 # ggplot2::ggsave("p_snow_sites.png",         p_snow_sites,         dpi = 900, path = savepath)

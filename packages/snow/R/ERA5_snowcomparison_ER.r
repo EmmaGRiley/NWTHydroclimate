@@ -61,7 +61,10 @@ crs_proj <- 3347  # NAD83 / Statistics Canada Lambert (projected, meters)
 #bring in MT_tbl from ERA5_snowtrends_map_hourly.R
 MT <- read.csv(paste0(user, "/Documents/R_Scripts/Packages/snow/data/MRB_snowsurvey_trends.csv")) 
 MT <- MT %>%
-  dplyr::select(-X)
+  # row index column; absent if the file has been re-saved from Excel
+  dplyr::select(-dplyr::any_of("X")) %>%
+  # the ERA5 trend table also has Tau, so keep the survey-site statistics distinct
+  dplyr::rename(dplyr::any_of(c(MT_Tau = "Tau", MT_Z = "Z")))
 
 # clip the survey sites to the scope boundary, as ERA5_manual_SWE_bias.R does
 scope_layer <- if (scope == "MRB") "MackenzieRiverBasin_FDA" else "NWT_ENR_BND_FND"
@@ -75,6 +78,10 @@ n_before_clip <- nrow(MT)
 MT <- sf::st_as_sf(MT, coords = c("Longitude", "Latitude"), crs = proj, remove = FALSE) %>%
   sf::st_filter(scope_poly, .predicate = sf::st_intersects) %>%
   sf::st_drop_geometry()
+# airport-network sites: excluded at NWT scope, which is the GNWT-ECC snow survey
+# network as much as a spatial extent; kept at MRB scope, which takes SWE from any network
+map_exclude_sites <- c("FORT SMITH A", "NORMAN WELLS A")
+if (scope == "NWT") MT <- dplyr::filter(MT, Site_name %!in% map_exclude_sites)
 cat("\nScope:", scope, "- survey sites retained:", nrow(MT), "of", n_before_clip, "\n")
 
 era5data <- era5data %>%
@@ -384,7 +391,8 @@ if (any(missing)) {
 
 #assign missing points to more general groupings
 #Mackenzie River main stem
-MRBsites <- c("Tulita", "NORMAN WELLS A", "Norman Wells", "Fort Good Hope", "Caribou Creek")
+# same list as ERA5_manual_SWE_bias.R; only used for sites outside every basin polygon
+MRBsites <- c("Tulita", "NORMAN WELLS A", "Norman Wells", "Fort Good Hope", "Caribou Creek", "Trout Lake_f", "Colville Lake", "Wrigley_f", "Fort Providence", "Deline", "Kimble Tower", "Ndulee Crossing", "Inuvik A")
 GSL_othsites <- c("Nyarling River", "Kakisa River", "Pine Point", "Thubun Lake")
 pts_basin$basin <- ifelse(is.na(pts_basin$basin == T)&pts_basin$Site_name %in%MRBsites, "Mackenzie River main stem", pts_basin$basin)
 pts_basin$basin <- ifelse(is.na(pts_basin$basin == T)&pts_basin$Site_name %in%GSL_othsites, "Great Slave Lake - other", pts_basin$basin)
@@ -431,6 +439,19 @@ corr_nwt <- stats::cor.test(
   Data_table$NormMagnitude[Data_table$group == "NWT"],
   method = "spearman"
 )
+
+# test statistic, n and critical rho (two-sided, alpha = 0.05) for reporting
+pair_ok <- stats::complete.cases(Data_table$NormSen_slope, Data_table$NormMagnitude)
+spearman_n <- list(all = sum(pair_ok), NWT = sum(pair_ok & Data_table$group == "NWT"))
+spearman_tbl <- dplyr::bind_rows(lapply(c("all", "NWT"), function(k) {
+  ct <- if (k == "all") corr_all else corr_nwt
+  n  <- spearman_n[[k]]
+  t_crit <- stats::qt(0.975, n - 2)
+  dplyr::tibble(n = n, rho = unname(ct$estimate), S = unname(ct$statistic), p = ct$p.value,
+                rho_crit_05 = t_crit / sqrt(n - 2 + t_crit^2))
+}))
+spearman_tbl <- dplyr::bind_cols(sites = c("all", "NWT"), spearman_tbl)
+write.csv(spearman_tbl, paste0(savepath, "/tblA_spearman", fig_suffix, ".csv"), row.names = FALSE)
 
 fmt_p <- function(p) {
   if (is.na(p)) {
@@ -661,28 +682,29 @@ trend_long <- dt %>%
     )
   )
 
-p_trend <- ggplot2::ggplot(trend_long, ggplot2::aes(x = basin, y = trend, fill = source)) +
-  ggplot2::geom_boxplot(outlier.alpha = 0.2) +
-  ggplot2::theme_classic() +
-  #ggplot2::geom_jitter() +
-  ggplot2::geom_abline(slope = 0, linetype = "dashed") +
-  ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1)) +
-  ggplot2::labs(
-    x = "Basin",
-    y = "SWE trend (mm/decade)",
-    fill = NULL
-  )+
-  ggplot2::theme(
-    panel.border = ggplot2::element_rect(fill = NA, linewidth = 1, color = "black"),
-    axis.text = ggplot2::element_text(size = 12),
-    axis.title = ggplot2::element_text(size = 12),
-    legend.text =  ggplot2::element_text(size = 12) )
+p_trend <- plot_paired_box(trend_long, "basin", "trend", "SWE trend (mm/decade)", "Basin",
+                           cols = basin_cols, labels = short_basin, zero_line = TRUE)
 
 p_trend
 
 p_trend_basin <- p_trend
 
-ggplot2::ggsave(filename = paste0("p_trend_basin", fig_suffix, ".png"), dpi = 900, path = savepath)
+ggplot2::ggsave(filename = paste0("p_trend_basin", fig_suffix, ".png"), p_trend_basin,
+                dpi = 900, path = savepath, width = 10, height = 7)
+
+# combined basin figure for the main text: (a) mean SWE, (b) SWE trends, laid out
+# like the (a)/(b) bias figure - x axis labels on the bottom panel only and the
+# source legend inside panel (a)
+p_swe_trend_basin <- patchwork::wrap_plots(
+    p_swe_basin +
+      ggplot2::theme(axis.text.x  = ggplot2::element_blank(),
+                     axis.title.x = ggplot2::element_blank()),
+    p_trend_basin + ggplot2::theme(legend.position = "none"),
+    ncol = 1) +
+  patchwork::plot_annotation(tag_levels = "a", tag_prefix = "(", tag_suffix = ")") &
+  ggplot2::theme(plot.tag = ggplot2::element_text(size = 18, face = "bold"))
+ggplot2::ggsave(filename = paste0("p_swe_trend_basin_ab", fig_suffix, ".png"), p_swe_trend_basin,
+                dpi = 900, path = savepath, width = 10, height = 13)
 
 p_error <- ggplot2::ggplot(dt, ggplot2::aes(x = basin, y = abs_err_norm, fill = basin)) +
   ggplot2::geom_boxplot(outlier.alpha = 0.2) +
@@ -755,35 +777,45 @@ means_swe
 means_trend
 means_error
 
+#differences between ERA5-Land and SS when grouped by region.
+# Mann-Whitney U (Wilcoxon rank-sum) as originally run, plus the Wilcoxon
+# signed-rank test, since each site is paired with its own matched ERA5 cell.
+# Critical values are the lower two-sided alpha = 0.05 bounds (reject if <=).
+wilcox_by_group <- function(d, group_col) {
+  d <- d[!is.na(d[[group_col]]), ]
+  dplyr::bind_rows(lapply(split(d, d[[group_col]]), function(g) {
+    ok <- stats::complete.cases(g$Manual_meanmax_mm, g$ERA5_meanmax_mm)
+    g  <- g[ok, ]
+    n  <- nrow(g)
+    if (n < 3 || dplyr::n_distinct(g$Manual_meanmax_mm) <= 2) return(NULL)
+    rs <- suppressWarnings(stats::wilcox.test(g$Manual_meanmax_mm, g$ERA5_meanmax_mm))
+    sr <- suppressWarnings(stats::wilcox.test(g$Manual_meanmax_mm, g$ERA5_meanmax_mm, paired = TRUE))
+    dplyr::tibble(
+      region             = g[[group_col]][1],
+      n_pairs            = n,
+      test_statistic_W   = unname(rs$statistic),
+      W_crit_05          = stats::qwilcox(0.025, n, n) - 1,
+      test_results_p     = rs$p.value,
+      signedrank_V       = unname(sr$statistic),
+      V_crit_05          = stats::qsignrank(0.025, n) - 1,
+      signedrank_p       = sr$p.value,
+      mean_diff_mm       = mean(g$ERA5_meanmax_mm - g$Manual_meanmax_mm),
+      sd_diff_mm         = stats::sd(g$ERA5_meanmax_mm - g$Manual_meanmax_mm)
+    )
+  }))
+}
+
 #differences between ERA5-Land and SS when grouped by basin
 
 basin <- unique(dt$basin)
 
-wilcox.test.results <- data.frame(
-  test_statistic_W = numeric(),
-  test_results_p = numeric(),
-  basin = character()
-)
-
-for (i in basin){
-  dt_basin <- dt[dt$basin == i, ]
-  
-  test <- wilcox.test(dt_basin$Manual_meanmax_mm, dt_basin$ERA5_meanmax_mm, alternative = "two.sided")
-  
-  wilcox.test.results <- wilcox.test.results %>%
-    dplyr::add_row(
-      basin = i,
-      test_statistic_W = unname(test$statistic),
-      test_results_p = test$p.value
-    )
-  
-}
+wilcox.test.results <- wilcox_by_group(dt, "basin")
 write.csv(wilcox.test.results, paste0(savepath, "/tblA_wilcox_swe_basin", fig_suffix, ".csv"), row.names = FALSE)
 
 # #Similar analysis as above but with eco/region/zone/province
 
 # 1) read in table
-dt0 <- read.csv(paste0(user, "/Documents/R_Scripts/Packages/snow/data/ERA5_manual_comparison.csv")) 
+dt0 <- Data_table  # scope-specific, built above (was the cached MRB ERA5_manual_comparison.csv)
 dt0 <- dt0 %>%
   dplyr::mutate(
     ERA5_meanmax_mm   = meanmaxswe *1000,
@@ -842,25 +874,12 @@ swe_long <- dt %>%
     )
   )
 
-p_swe <- ggplot2::ggplot(swe_long, ggplot2::aes(x = ECOZONE_NA, y = meanmax_swe_mm, fill = source)) +
-  ggplot2::geom_boxplot(outlier.alpha = 0.2) +
-  ggplot2::theme_classic() +
-  #gplot2::geom_jitter() +
-  ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1)) +
-  ggplot2::labs(
-    x = "Ecozone",
-    y = "Mean end-of-season SWE (mm)",
-    fill = NULL
-  ) +
-  ggplot2::theme(
-    panel.border = ggplot2::element_rect(fill = NA, linewidth = 1, color = "black"),
-    axis.text = ggplot2::element_text(size = 12),
-    axis.title = ggplot2::element_text(size = 12),
-    legend.text =  ggplot2::element_text(size = 12) )
+p_swe <- plot_paired_box(swe_long, "ECOZONE_NA", "meanmax_swe_mm", "Mean end-of-season SWE (mm)", "Ecozone")
 
 p_swe
 
-ggplot2::ggsave(filename = paste0("p_swe", fig_suffix, ".png"), dpi = 900, path = savepath)
+ggplot2::ggsave(filename = paste0("p_swe", fig_suffix, ".png"), p_swe,
+                dpi = 900, path = savepath, width = 10, height = 7)
 
 trend_long <- dt %>%
   dplyr::select(ECOZONE_NA, ERA5_trend, Manual_trend) %>%
@@ -877,26 +896,12 @@ trend_long <- dt %>%
     )
   )
 
-p_trend <- ggplot2::ggplot(trend_long, ggplot2::aes(x = ECOZONE_NA, y = trend, fill = source)) +
-  ggplot2::geom_boxplot(outlier.alpha = 0.2) +
-  ggplot2::theme_classic() +
-  #ggplot2::geom_jitter() +
-  ggplot2::geom_abline(slope = 0, linetype = "dashed") +
-  ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1)) +
-  ggplot2::labs(
-    x = "Ecozone",
-    y = "SWE trend (mm/decade)",
-    fill = NULL
-  )+
-  ggplot2::theme(
-    panel.border = ggplot2::element_rect(fill = NA, linewidth = 1, color = "black"),
-    axis.text = ggplot2::element_text(size = 12),
-    axis.title = ggplot2::element_text(size = 12),
-    legend.text =  ggplot2::element_text(size = 12) )
+p_trend <- plot_paired_box(trend_long, "ECOZONE_NA", "trend", "SWE trend (mm/decade)", "Ecozone", zero_line = TRUE)
 
 p_trend
 
-ggplot2::ggsave(filename = paste0("p_trend", fig_suffix, ".png"), dpi = 900, path = savepath)
+ggplot2::ggsave(filename = paste0("p_trend", fig_suffix, ".png"), p_trend,
+                dpi = 900, path = savepath, width = 10, height = 7)
 
 p_error <- ggplot2::ggplot(dt, ggplot2::aes(x = ECOZONE_NA, y = abs_err_norm, fill = ECOZONE_NA)) +
   ggplot2::geom_boxplot(outlier.alpha = 0.2) +
@@ -971,31 +976,13 @@ means_error
 
 ecozone <- unique(dt_ecoz$ECOZONE_NA)
 
-wilcox.test.results <- data.frame(
-  test_statistic_W = numeric(),
-  test_results_p = numeric(),
-  ecozone = character()
-)
-
-for (i in ecozone){
-  dt_eco <- dt[dt_ecoz$ECOZONE_NA == i, ]
-  
-  test <- wilcox.test(dt_eco$Manual_meanmax_mm, dt_eco$ERA5_meanmax_mm, alternative = "two.sided")
-  
-  wilcox.test.results <- wilcox.test.results %>%
-    dplyr::add_row(
-      ecozone = i,
-      test_statistic_W = unname(test$statistic),
-      test_results_p = test$p.value
-    )
-  
-}
+wilcox.test.results <- wilcox_by_group(dt, "ECOZONE_NA")
 write.csv(wilcox.test.results, paste0(savepath, "/tblA_wilcox_swe_ecozone", fig_suffix, ".csv"), row.names = FALSE)
 
 # #Similar analysis as above but with eco/region/zone/province
 
 # 1) read in table
-dt0 <- read.csv(paste0(user, "/Documents/R_Scripts/Packages/snow/data/ERA5_manual_comparison.csv")) 
+dt0 <- Data_table  # scope-specific, built above (was the cached MRB ERA5_manual_comparison.csv)
   dt0 <- dt0 %>%
   dplyr::mutate(
     ERA5_meanmax_mm   = meanmaxswe *1000,
@@ -1054,25 +1041,12 @@ swe_long <- dt %>%
     )
   )
 
-p_swe <- ggplot2::ggplot(swe_long, ggplot2::aes(x = ECOREGION1, y = meanmax_swe_mm, fill = source)) +
-  ggplot2::geom_boxplot(outlier.alpha = 0.2) +
-  ggplot2::theme_classic() +
-  #ggplot2::geom_jitter() +
-  ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 90, hjust = 1)) +
-  ggplot2::labs(
-    x = "Ecoregion",
-    y = "Mean end-of-season SWE (mm)",
-    fill = NULL
-  ) +
-  ggplot2::theme(
-    panel.border = ggplot2::element_rect(fill = NA, linewidth = 1, color = "black"),
-    axis.text = ggplot2::element_text(size = 12),
-    axis.title = ggplot2::element_text(size = 12),
-    legend.text =  ggplot2::element_text(size = 12) )
+p_swe <- plot_paired_box(swe_long, "ECOREGION1", "meanmax_swe_mm", "Mean end-of-season SWE (mm)", "Ecoregion", angle = 90)
 
 p_swe_region <- p_swe
 
-ggplot2::ggsave(filename = paste0("p_swe_region", fig_suffix, ".png"), dpi = 900, path = savepath)
+ggplot2::ggsave(filename = paste0("p_swe_region", fig_suffix, ".png"), p_swe_region,
+                dpi = 900, path = savepath, width = 14, height = 10)
 
 trend_long <- dt %>%
   dplyr::select(ECOREGION1, ERA5_trend, Manual_trend) %>%
@@ -1089,26 +1063,12 @@ trend_long <- dt %>%
     )
   )
 
-p_trend <- ggplot2::ggplot(trend_long, ggplot2::aes(x = ECOREGION1, y = trend, fill = source)) +
-  ggplot2::geom_boxplot(outlier.alpha = 0.2) +
-  ggplot2::theme_classic() +
-  ggplot2::geom_abline(slope = 0, linetype = "dashed") +
-  #ggplot2::geom_jitter() +
-  ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 90, hjust = 1)) +
-  ggplot2::labs(
-    x = "Ecoregion",
-    y = "SWE trend (mm/decade)",
-    fill = NULL
-  )+
-  ggplot2::theme(
-    panel.border = ggplot2::element_rect(fill = NA, linewidth = 1, color = "black"),
-    axis.text = ggplot2::element_text(size = 12),
-    axis.title = ggplot2::element_text(size = 12),
-    legend.text =  ggplot2::element_text(size = 12) )
+p_trend <- plot_paired_box(trend_long, "ECOREGION1", "trend", "SWE trend (mm/decade)", "Ecoregion", angle = 90, zero_line = TRUE)
 
 p_trend_region <- p_trend
 
-ggplot2::ggsave(filename = paste0("p_trend_region", fig_suffix, ".png"), dpi = 900, path = savepath)
+ggplot2::ggsave(filename = paste0("p_trend_region", fig_suffix, ".png"), p_trend_region,
+                dpi = 900, path = savepath, width = 14, height = 10)
 
 p_error <- ggplot2::ggplot(dt, ggplot2::aes(x = ECOREGION1, y = abs_err_norm, fill = ECOREGION1)) +
   ggplot2::geom_boxplot(outlier.alpha = 0.2) +
@@ -1184,33 +1144,13 @@ means_error
 
 ecoregion <- unique(dt_ecoz$ECOREGION1)
 
-wilcox.test.results <- data.frame(
-  test_statistic_W = numeric(),
-  test_results_p = numeric(),
-  ecoregion = character()
-)
-
-for (i in ecoregion){
-  dt_eco <- dt[dt_ecoz$ECOREGION1 == i, ]
-  
-  if(dplyr::n_distinct(dt_eco$Manual_meanmax_mm) <= 2) next
-  
-  test <- wilcox.test(dt_eco$Manual_meanmax_mm, dt_eco$ERA5_meanmax_mm, alternative = "two.sided")
-  
-  wilcox.test.results <- wilcox.test.results %>%
-    dplyr::add_row(
-      ecoregion = i,
-      test_statistic_W = unname(test$statistic),
-      test_results_p = test$p.value
-    )
-  
-}
+wilcox.test.results <- wilcox_by_group(dt, "ECOREGION1")
 write.csv(wilcox.test.results, paste0(savepath, "/tblA_wilcox_swe_ecoregion", fig_suffix, ".csv"), row.names = FALSE)
 
 # #Similar analysis as above but with eco/region/zone/province
 
 # 1) read in table
-dt0 <- read.csv(paste0(user, "/Documents/R_Scripts/Packages/snow/data/ERA5_manual_comparison.csv")) 
+dt0 <- Data_table  # scope-specific, built above (was the cached MRB ERA5_manual_comparison.csv)
 dt0 <- dt0 %>%
   dplyr::mutate(
     ERA5_meanmax_mm   = meanmaxswe *1000,
@@ -1269,27 +1209,14 @@ swe_long <- dt %>%
     )
   )
 
-p_swe <- ggplot2::ggplot(swe_long, ggplot2::aes(x = ECOPROVI_1, y = meanmax_swe_mm, fill = source)) +
-  ggplot2::geom_boxplot(outlier.alpha = 0.2) +
-  ggplot2::theme_classic() +
-  #ggplot2::geom_jitter() +
-  ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1)) +
-  ggplot2::labs(
-    x = "Ecoprovince",
-    y = "Mean end-of-season SWE (mm)",
-    fill = NULL
-  ) +
-  ggplot2::theme(
-    panel.border = ggplot2::element_rect(fill = NA, linewidth = 1, color = "black"),
-    axis.text = ggplot2::element_text(size = 12),
-    axis.title = ggplot2::element_text(size = 12),
-    legend.text =  ggplot2::element_text(size = 12) )
+p_swe <- plot_paired_box(swe_long, "ECOPROVI_1", "meanmax_swe_mm", "Mean end-of-season SWE (mm)", "Ecoprovince")
 
 p_swe_ecoprov <- p_swe
 
 p_swe_ecoprov
 
-ggplot2::ggsave(filename = paste0("p_swe_ecoprov", fig_suffix, ".png"), dpi = 900, path = savepath)
+ggplot2::ggsave(filename = paste0("p_swe_ecoprov", fig_suffix, ".png"), p_swe_ecoprov,
+                dpi = 900, path = savepath, width = 12, height = 8)
 
 trend_long <- dt %>%
   dplyr::select(ECOPROVI_1, ERA5_trend, Manual_trend) %>%
@@ -1306,28 +1233,14 @@ trend_long <- dt %>%
     )
   )
 
-p_trend <- ggplot2::ggplot(trend_long, ggplot2::aes(x = ECOPROVI_1, y = trend, fill = source)) +
-  ggplot2::geom_boxplot(outlier.alpha = 0.2) +
-  ggplot2::theme_classic() +
-  ggplot2::geom_abline(slope = 0, linetype = "dashed") +
-  #ggplot2::geom_jitter() +
-  ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1)) +
-  ggplot2::labs(
-    x = "Ecoprovince",
-    y = "SWE trend (mm/decade)",
-    fill = NULL
-  )+
-  ggplot2::theme(
-    panel.border = ggplot2::element_rect(fill = NA, linewidth = 1, color = "black"),
-    axis.text = ggplot2::element_text(size = 12),
-    axis.title = ggplot2::element_text(size = 12),
-    legend.text =  ggplot2::element_text(size = 12) )
+p_trend <- plot_paired_box(trend_long, "ECOPROVI_1", "trend", "SWE trend (mm/decade)", "Ecoprovince", zero_line = TRUE)
 
 p_trend_ecoprov <- p_trend
 
 p_trend_ecoprov
 
-ggplot2::ggsave(filename = paste0("p_trend_ecoprov", fig_suffix, ".png"), dpi = 900, path = savepath)
+ggplot2::ggsave(filename = paste0("p_trend_ecoprov", fig_suffix, ".png"), p_trend_ecoprov,
+                dpi = 900, path = savepath, width = 12, height = 8)
 
 p_error <- ggplot2::ggplot(dt, ggplot2::aes(x = ECOPROVI_1, y = abs_err_norm, fill = ECOPROVI_1)) +
   ggplot2::geom_boxplot(outlier.alpha = 0.2) +
@@ -1404,25 +1317,5 @@ means_error
 
 ecoprovince <- unique(dt_ecoz$ECOPROVI_1)
 
-wilcox.test.results <- data.frame(
-  test_statistic_W = numeric(),
-  test_results_p = numeric(),
-  ecoprovince = character()
-)
-
-for (i in ecoprovince){
-  dt_eco <- dt[dt_ecoz$ECOPROVI_1 == i, ]
-  
-  if(dplyr::n_distinct(dt_eco$Manual_meanmax_mm) <= 2) next
-  
-  test <- wilcox.test(dt_eco$Manual_meanmax_mm, dt_eco$ERA5_meanmax_mm, alternative = "two.sided")
-  
-  wilcox.test.results <- wilcox.test.results %>%
-    dplyr::add_row(
-      ecoprovince = i,
-      test_statistic_W = unname(test$statistic),
-      test_results_p = test$p.value
-    )
-  
-}
+wilcox.test.results <- wilcox_by_group(dt, "ECOPROVI_1")
 write.csv(wilcox.test.results, paste0(savepath, "/tblA_wilcox_swe_ecoprovince", fig_suffix, ".csv"), row.names = FALSE)

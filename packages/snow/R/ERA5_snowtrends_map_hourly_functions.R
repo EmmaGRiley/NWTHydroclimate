@@ -1000,3 +1000,55 @@ shade_col <- function(col, amount) {
   m <- if (amount > 0) m + (1 - m) * amount else m * (1 + amount)
   grDevices::rgb(m[1, ], m[2, ], m[3, ])
 }
+
+# default ggplot hue palette named by region, for groupings with no fixed palette
+# (ecozones, ecoprovinces, ecoregions) - the same way basin_cols was chosen
+region_cols <- function(regions) {
+  r <- sort(unique(stats::na.omit(regions)))
+  stats::setNames(scales::hue_pal()(length(r)), r)
+}
+
+# Paired ERA5-Land / manual survey boxplots in the style of Fig. A4: one colour
+# per region, ERA5-Land a lighter and the manual surveys a darker shade of it,
+# with the source carried by a grey legend. d is long format with a `source`
+# column ("ERA5-Land" / "Manual surveys"). zero_line adds a dashed line at 0 for
+# trend panels; legend_inside = NULL puts the legend above the panel instead.
+plot_paired_box <- function(d, group_col, y_col, ylab, xlab,
+                            cols = NULL, labels = ggplot2::waiver(), angle = 45,
+                            zero_line = FALSE, legend_inside = c(0.02, 0.98)) {
+  d <- d[!is.na(d[[group_col]]), ]
+  if (is.null(cols)) cols <- region_cols(d[[group_col]])
+  d$fill_col <- ifelse(d$source == "ERA5-Land",
+                       shade_col(cols[d[[group_col]]], 0.45),
+                       shade_col(cols[d[[group_col]]], -0.25))
+
+  p <- ggplot2::ggplot(d, ggplot2::aes(x = .data[[group_col]], y = .data[[y_col]],
+                                       group = interaction(source, .data[[group_col]])))
+  if (zero_line) p <- p + ggplot2::geom_hline(yintercept = 0, linetype = "dashed")
+  legend_theme <- if (is.null(legend_inside)) {
+    ggplot2::theme(legend.position = "top")
+  } else {
+    ggplot2::theme(legend.position = "inside", legend.position.inside = legend_inside,
+                   legend.justification = legend_inside)
+  }
+  p +
+    ggplot2::geom_boxplot(ggplot2::aes(fill = fill_col), outlier.alpha = 0.3,
+                          position = ggplot2::position_dodge(width = 0.8), width = 0.7) +
+    ggplot2::scale_fill_identity() +
+    # invisible layer that only exists to draw the source legend
+    ggplot2::geom_point(ggplot2::aes(shape = source), alpha = 0, size = 0) +
+    ggplot2::scale_shape_manual(values = c("ERA5-Land" = 22, "Manual surveys" = 22), name = NULL) +
+    ggplot2::guides(shape = ggplot2::guide_legend(override.aes = list(
+      alpha = 1, size = 7, colour = "grey20", fill = c("grey80", "grey35")))) +
+    ggplot2::scale_x_discrete(labels = labels) +
+    ggplot2::theme_classic() +
+    ggplot2::labs(x = xlab, y = ylab) +
+    ggplot2::theme(
+      axis.text.x  = if (angle == 90) ggplot2::element_text(angle = 90, hjust = 1, vjust = 0.5)
+                     else ggplot2::element_text(angle = angle, hjust = 1),
+      panel.border = ggplot2::element_rect(fill = NA, linewidth = 1, color = "black"),
+      axis.text    = ggplot2::element_text(size = 14),
+      axis.title   = ggplot2::element_text(size = 18),
+      legend.text  = ggplot2::element_text(size = 14)) +
+    legend_theme
+}
