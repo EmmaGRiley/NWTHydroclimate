@@ -7,6 +7,33 @@
 `%>%` <- magrittr::`%>%`
 `%!in%` <- Negate(`%in%`)
 
+# CARTO background tiles using your own API key from .Renviron (same function as in ERA5_snowtrends_map_hourly_functions.R)
+carto_tiles <- function(map, style = "light_all", group = "CartoDB") {
+  key <- Sys.getenv("CARTO_API_KEY")          # match your .Renviron name
+  if (!nzchar(key)) stop("CARTO_API_KEY not set in .Renviron")
+
+  leaflet::addTiles(
+    map,
+    urlTemplate = sprintf(
+      "https://{s}.basemaps.cartocdn.com/rastertiles/%s/{z}/{x}/{y}.png?key=%s",
+      style, key),
+    attribution = paste0(
+      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>, ',
+      '&copy; <a href="https://carto.com/attributions">CARTO</a>'),
+    group = group,
+    options = leaflet::tileOptions(subdomains = "abcd", maxZoom = 20)
+  )
+}
+
+# adds the background map chosen in the basemap setting
+add_basemap <- function(map) {
+  if (basemap == "carto_key") {
+    carto_tiles(map, style = "light_nolabels") # CARTO light background, no labels
+  } else {
+    leaflet::addProviderTiles(map, basemap, group = "Basemap")
+  }
+}
+
 # Define user
 user <- paste0("C:/Users/", tolower(Sys.getenv("USERNAME"))) # PC version
 
@@ -38,7 +65,7 @@ library(ncdf4)
 
 current_year  <- 2026
 start_date <- "2026-06-09"
-target_date   <- "2026-06-30"   # date to compare against April 1 max (YYYY-MM-DD). Check to see whats available on the climate store
+target_date   <- "2026-06-09"   # date to compare against April 1 max (YYYY-MM-DD). Check to see whats available on the climate store
 baseline_date <- "2026-05-01"   # diff mode only: label for the baseline_file date (used in legend)
 
 # Path to April 1 max baseline .nc (produced by ERA5_spring_snow_analysis.R)
@@ -76,6 +103,18 @@ mack_basin_outline <- TRUE
 add_legend         <- TRUE
 save               <- TRUE
 add_basin          <- TRUE
+basemap            <- "carto_key" # background map. "carto_key" = CARTO light, no labels, using your own CARTO_API_KEY in .Renviron
+# (how to get one: README section 6d). Never use someone else's key. No key? use another leaflet provider,
+# e.g. "Esri.WorldGrayCanvas" (full list: names(leaflet::providers))
+
+# check the background map setting
+if (basemap == "carto_key" && !nzchar(Sys.getenv("CARTO_API_KEY"))) {
+  stop("basemap = \"carto_key\" but there is no CARTO_API_KEY in your .Renviron.\n",
+       "Add your own key (see README section 6d) and restart R, or use a background that doesn't need a key, e.g. basemap = \"Esri.WorldGrayCanvas\".", call. = FALSE)
+}
+if (basemap != "carto_key" && !(basemap %in% names(leaflet::providers))) {
+  stop("basemap = \"", basemap, "\" is not a leaflet background map. Check the spelling, or run names(leaflet::providers) to see the options.", call. = FALSE)
+}
 
 # Set webshot path (added to the end of PATH rather than replacing it)
 Sys.setenv(PATH = paste(Sys.getenv("PATH"), paste0(user, "/Documents/Modelling/phantomjs/phantomjs/bin"), sep = ";"))
@@ -252,8 +291,7 @@ legend_colors <- PerCol_gridded(levels(sd_values_sf$Bin))
 # ---- Build leaflet map -------------------------------------------------------
 
 map <- leaflet::leaflet() %>%
-  leaflet::addProviderTiles(leaflet::providers$CartoDB.PositronNoLabels,
-                            group = "CartoDB") %>%
+  add_basemap() %>%
   leaflet::addCircleMarkers(
     data        = sd_values_sf,
     fillColor   = ~PerCol_gridded(Bin),

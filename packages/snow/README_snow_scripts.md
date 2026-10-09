@@ -38,11 +38,23 @@ C:/Users/<you>/Documents/
 └── NT_Hydrology/Figures/             ← maps and plots are saved here
 ```
 
-**Data not on GitHub.** `YT_Data/`, `AB_Data/` and `BC_Data/` are small (~20 MB). Copy them whole. `SWEmax_dataset/` is 44 GB in full, but you only need:
-- every `.csv` file (~540 MB)
-- `snow_depth_April_max_<latest year>.nc` (for `ERA5_snow_remaining_map.R`)
+**Data not on GitHub.** Copy these from the H: drive (GNWT network only):
 
-**[EMMA: confirm H: drive location of the copy]**
+`H:\Waters\001 - Water Resources - Staff Working Files\001a - Water Resources - Staff Working Files\Active - Emma Gregory`
+
+Keep the same folder names, so each one goes straight into your `snow/data/` folder:
+
+| Copy into `snow/data/` | Size | Needed for |
+|---|---|---|
+| `YT_Data/` (whole folder) | <1 MB | April 1 map, Yukon historical means (`Snow_Samples_YT.csv`) |
+| `AB_Data/` (whole folder, **including** `AB_Data/Shapefiles/`) | 4 MB | April 1 map (`snow_stations.shp` locates the AB sites) |
+| `BC_Data/` (whole folder) | 14 MB | April 1 map (`BC_Locations.csv` is needed even though the survey data download automatically) |
+| `SWEmax_dataset/April_max_combined_max_snow.csv` | 55 MB | April 1 map, ERA5 map |
+| `SWEmax_dataset/May_max_combined_max_snow.csv` | 55 MB | ERA5 map (`file <- "May_max"`) |
+| `SWEmax_dataset/May_14max_combined_max_snow.csv` | 53 MB | ERA5 map (`file <- "May_14max"`) |
+| `SWEmax_dataset/snow_depth_April_max_<latest year>.nc` | 24 MB | `ERA5_snow_remaining_map.R` |
+
+Optional (research scripts only): `SWEmax_dataset/ERA5_updated1960_2025NWT.csv` and `ERA5_updatedfeb_mayNWT.csv` (for `ERA5_manual_SWE_bias.R` / `ERA5_manual_SWE_variability.R`), and the earlier `snow_depth_April_max_<year>.nc` files (only needed to rebuild the April max file from scratch). The rest of `SWEmax_dataset/` (44 GB in full) isn't needed. The shapefiles for `Documents/Shapefiles/` are in the same H: drive folder.
 
 > If your Documents folder is redirected (e.g. to OneDrive), none of these paths will work. In R, run `path.expand("~")`. It should print `C:/Users/<you>/Documents`. If it doesn't, talk to IT before going further.
 
@@ -128,7 +140,7 @@ The ERA5 maps don't download their own baseline. They read files this script mak
    - `for(year in 2027)` in the download loop
    - `for (year in 1995:2027)` in the combine loop
 3. Skip the `install.packages()` lines if already installed. Run down to and including the `write.csv(combined_max_snow, …)` line. Stop there, because the rest of the script is separate analysis.
-4. Check that `SWEmax_dataset/April_max__combined_max_snow.csv` (note the **double underscore**) now has a `Snow_2027` column.
+4. Check that `SWEmax_dataset/April_max_combined_max_snow.csv` now has a `Snow_2027` column.
 
 The download takes from minutes to hours, depending on the CDS queue.
 
@@ -142,13 +154,14 @@ The download takes from minutes to hours, depending on the CDS queue.
 
 | Setting | Meaning |
 |---|---|
-| `file` | Which ERA5 file: `"April_max_"`, `"May_max_"`, `"May_14max_"`, or `"max_spring"` (Feb–May max). It reads `SWEmax_dataset/<file>_combined_max_snow.csv` |
+| `file` | Which ERA5 file: `"April_max_"`, `"May_max_"`, `"May_14max_"`, or `"max_spring"` (Feb–May max). It reads `SWEmax_dataset/<file>_combined_max_snow.csv` (e.g. `April_max_combined_max_snow.csv`; a trailing `_` in `file` is ignored) |
 | `current_year` | Year to map. % of average = this year ÷ mean of every other year in the file |
 | `clip_ERA5` | `T` = only show the Mackenzie River Basin |
 | `mack_basin_outline` | Draw the MRB outline |
 | `manual_sites` | `T` = also plot survey sites (NT from database + CanSWE). Usually `F` |
 | `add_legend` | Add legend to map |
 | `save` | Save `.html` and `.png` |
+| `basemap` | Background map. `"carto_key"` (default) needs **your own** CARTO API key; no key → e.g. `"Esri.WorldGrayCanvas"`. See the `basemap` bullet in §6d |
 
 **Output:** `Documents/NT_Hydrology/Figures/map_MRB_mo<file><year>.html/.png`
 
@@ -168,7 +181,7 @@ Downloads ERA5-Land SWE for one day (`target_date`) and maps it.
 | `target_date` | Date to map (`"YYYY-MM-DD"`). Must be at least ~5 days ago |
 | `map_mode` | `"percent"` = % of April 1 max remaining. `"swe"` = SWE in mm on `target_date`. `"diff"` = change between `baseline_file` and `target_date` |
 | `baseline_file` | Normally the April max `.nc`. For `"diff"`, point it at another single-day file (e.g. `snow_depth_target_20270601.nc`) and set `baseline_date` to that date |
-| `clip_ERA5`, `mack_basin_outline`, `add_legend`, `save` | As above |
+| `clip_ERA5`, `mack_basin_outline`, `add_legend`, `save`, `basemap` | As above |
 | `add_basin` | Load Liard and Nahanni basins and print their basin-average values |
 
 **Outputs:**
@@ -242,6 +255,7 @@ If you get a warning that BC has no April 1 data, BC hasn't published yet (usual
    - `site_clip_exceptions`: sites just outside the selected basin that should still be shown (2025 Liard map used `c("Fort Simpson", "Checkpoint")`)
    - `mrb_clip_exceptions`: sites outside the MRB to keep (Colville Lake, Pine Lake Airstrip)
    - `exclude_sites`: BC sites that also appear in the AB data (avoids duplicates)
+   - `basemap`: the background map. The default `"carto_key"` is the CARTO light background with no labels, and it needs **your own** CARTO API key: create a CARTO account at https://carto.com, make an API access token (Developers → Credentials), and add `CARTO_API_KEY=<your key>` to your `.Renviron`. Never use someone else's key. No key? Use a background that doesn't need one, e.g. `"Esri.WorldGrayCanvas"` (run `names(leaflet::providers)` for the full list; the `CartoDB.*` ones need a key too). Step 5 at the top of the script has the details.
 3. Click **Source**. The script first checks every input file and stops with a list of anything missing.
 4. Check the console:
    - The table of sites per jurisdiction (`AB`, `BC`, `NT`, `YT`). If one is missing or has very few sites, check that jurisdiction's file.
@@ -249,6 +263,9 @@ If you get a warning that BC has no April 1 data, BC hasn't published yet (usual
 5. Outputs in `Documents/NT_Hydrology/Figures/`:
    - `map_<MRB or basin>_April1_2027.html/.png`
    - for single basins, an inset `map_inset_<basin>_2027.html/.png`
+6. Finish the map in **CorelDraw** (legend, labels, layout). Step-by-step instructions are on DIIMS:
+   - End of season maps: https://diims.gov.nt.ca/gnwt/llisapi.dll/link/245398288
+   - Mid-season maps: https://diims.gov.nt.ca/gnwt/llisapi.dll?func=ll&objaction=overview&objid=245772669
 
 **To make a 2028 version:** copy this file to `Snow_Mapping_April1_2028.R` and change `year = 2028`. Everything else follows from `year`.
 

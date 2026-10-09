@@ -1,5 +1,5 @@
 # Snow map for spring outlook - April 1 version (2027)
-# Based on Snow_Mapping_April1_2026.R (snow_local). Too complex to run as a function - easier to run as a script.
+# Based on Snow_Mapping_April1_2026.R (local version only). Too complex to run as a function - easier to run as a script.
 #
 # READ FIRST: README_snow_scripts.md (section "April 1 spring outlook map") in the snow package folder.
 #
@@ -8,12 +8,64 @@
 #   percent of average, and maps them over ERA5-Land percent-of-average SWE for the Mackenzie River Basin
 #   (or one sub-basin).
 #
-# BEFORE YOU RUN (BC data is downloaded automatically) - the "preflight check" section below will stop with a plain-English message if any of
-# these are missing:
-#   1. ODBC connection ECC_WMSD_SNOW set up, and ORACLE_SNOW_USER / ORACLE_SNOW_PWD in your .Renviron
-#   2. This year's YT and AB files saved in snow/data/YT_Data and snow/data/AB_Data with the year in the file name
-#   3. ERA5 April max file updated to include this year (run ERA5_spring_snow_analysis.R first)
-#   4. Shapefiles in Documents/Shapefiles/ (copied from the H: drive)
+# BEFORE YOU RUN - the "preflight check" section below will stop with a plain-English message if any of
+# these are missing. Work through them in order:
+#
+#   1. DATABASE CONNECTION (NT snow survey data)
+#      a. The ODBC connection ECC_WMSD_SNOW must be set up on your computer (see "Instructions - connecting to
+#         database.docx"). To check, run this in the console - ECC_WMSD_SNOW should be in the list:
+#           odbc::odbcListDataSources()$name
+#      b. Your snow database username and password must be in your .Renviron file. Get the password from ISSS.
+#         - In the console, run:   usethis::edit_r_environ()
+#           (if usethis isn't installed, run install.packages("usethis") first)
+#         - A file called .Renviron opens in RStudio. Add these two lines exactly as shown, with your password
+#           after the = sign. No quotes, no spaces around the =, and nothing else on the line:
+#             ORACLE_SNOW_USER=SNOW_VIEWER
+#             ORACLE_SNOW_PWD=yourpasswordhere
+#         - Make sure there is an empty line at the very end of the file (press Enter after the last line).
+#         - Save the file (Ctrl+S), then restart R: Session > Restart R.
+#         - To check it worked, run the lines below. Both should say TRUE. (Don't print the password itself.)
+#             nzchar(Sys.getenv("ORACLE_SNOW_USER"))
+#             nzchar(Sys.getenv("ORACLE_SNOW_PWD"))
+#         - Never type passwords into this script, and never email them or put them on GitHub.
+#
+#   2. THIS YEAR'S YUKON AND ALBERTA DATA, saved as snow/data/YT_Data/YT_Data_<year>.csv and
+#      snow/data/AB_Data/AB_Data_<year>.csv (how to build each file: README_snow_scripts.md, section 6).
+#      It is often easiest to wait until each agency publishes its April 1 snow data on its website / data
+#      portal. If you need the data sooner, or something looks wrong, contact:
+#        - Alberta: RFC.Ice@gov.ab.ca and/or nadia.kovachis@gov.ab.ca
+#        - Yukon:   Emilie-Jeanne.Bercier@yukon.ca, or the Yukon snow survey team generally
+#        - BC data downloads automatically (download_BC_data = T below) from
+#          https://www.env.gov.bc.ca/wsd/data_searches/snow/asws/data/. If the download fails or this year's
+#          surveys aren't there yet, contact Snow.Survey@gov.bc.ca and/or Jonathan.Boyd@gov.bc.ca and/or
+#          Jon.Goetz@gov.bc.ca
+#
+#   3. ERA5-LAND APRIL MAX FILE updated to include this year: run ERA5_spring_snow_analysis.R first, with
+#      file <- "April_max_". In that script, set date_stop to the LATEST DATE AVAILABLE this year at the time
+#      you run it - not the default end of May, which won't exist yet. ERA5-Land runs about 5 days behind,
+#      so e.g. for an April 1 map run on April 8, the last full day available is around April 3.
+#      Then check that SWEmax_dataset/April_max_combined_max_snow.csv has a
+#      Snow_<year> column.
+#
+#   4. SHAPEFILES in Documents/Shapefiles/ (copied from the H: drive, or separated yourself from
+#      https://open.canada.ca/data/en/dataset/a4b190fe-e090-4e6d-881e-b87956c07977/resource/c993b360-f86e-4c1d-92c2-e0b4c9268671)
+#
+#   5. BACKGROUND MAP (basemap setting below). The default, basemap = "carto_key", is the CARTO light background
+#      with no labels - what I use. It needs a CARTO API key. Use YOUR OWN key, never someone else's:
+#        - Create a CARTO account at https://carto.com with your work email.
+#        - In CARTO, go to Developers > Credentials and create an API access token. (CARTO renames its menus
+#          from time to time - if these steps don't match, search CARTO's help for "API access token".)
+#        - Add it to your .Renviron the same way as step 1b, on its own line:
+#            CARTO_API_KEY=yourkeyhere
+#          then save and restart R. The carto_tiles() function in this script reads it from there.
+#      No key? Use a background that doesn't need one, e.g. basemap = "Esri.WorldGrayCanvas"
+#      (to see every option, run names(leaflet::providers) in the console - the CartoDB.* ones need a key too).
+#
+# AFTER YOU RUN - finishing the map in CorelDraw:
+#   The .png in Documents/NT_Hydrology/Figures/ is the base map. Legends, labels and layout are finished in
+#   CorelDraw as map templates on DIIMS:
+#     - End of season maps: https://diims.gov.nt.ca/gnwt/llisapi.dll/link/245398288
+#     - Mid-season maps:    https://diims.gov.nt.ca/gnwt/llisapi.dll?func=ll&objaction=overview&objid=245772669
 
 # required packages
 library(dplyr)
@@ -28,7 +80,7 @@ year = 2027 # year you are mapping
 exclude_sites = c("FORT NELSON AIRPORT - BC", "FORT ST. JOHN - BC", "PINE PASS - BC") # exclude BC sites if specified in both AB and BC datasets
 save = T
 add_legend = F
-mack_basin_outline = T
+mack_basin_outline = T # set to F if mapping an individual basin. See selected_layer argument below
 ERA5_Land = T
 clip_ERA5 = T
 clip_stations = T
@@ -46,6 +98,8 @@ selected_layer = "all" # basin you are mapping, options are: "all", "Mackenzie B
 site_clip_exceptions = NA # sites that are representative of a given basin but are just outside basin borders, e.g. c("Fort Simpson", "Checkpoint") for Liard
 mrb_clip_exceptions = c("Colville Lake", "Pine Lake Airstrip") # sites that you want to map but are outside the MRB
 download_BC_data = T # T = download BC snow survey data straight from the BC website and save it as BC_Data_<year>.csv. F = use the file already saved
+basemap = "carto_key" # background map. "carto_key" = CARTO light, no labels, using your own CARTO_API_KEY (see BEFORE YOU RUN step 5).
+#No key? use another leaflet provider, e.g. "Esri.WorldGrayCanvas" (full list: names(leaflet::providers))
 
 # ---- File locations (should not need changing if folders were set up as in the README) ----------
 
@@ -70,6 +124,33 @@ parse_any_date <- function(x) {
   as.Date(lubridate::parse_date_time(as.character(x), orders = c("Ymd", "mdY", "Ymd HMS", "mdY HMS"), quiet = TRUE))
 }
 
+# CARTO background tiles using your own API key from .Renviron (same function as in ERA5_snowtrends_map_hourly_functions.R)
+carto_tiles <- function(map, style = "light_all", group = "CartoDB") {
+  key <- Sys.getenv("CARTO_API_KEY")          # match your .Renviron name
+  if (!nzchar(key)) stop("CARTO_API_KEY not set in .Renviron")
+
+  leaflet::addTiles(
+    map,
+    urlTemplate = sprintf(
+      "https://{s}.basemaps.cartocdn.com/rastertiles/%s/{z}/{x}/{y}.png?key=%s",
+      style, key),
+    attribution = paste0(
+      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>, ',
+      '&copy; <a href="https://carto.com/attributions">CARTO</a>'),
+    group = group,
+    options = leaflet::tileOptions(subdomains = "abcd", maxZoom = 20)
+  )
+}
+
+# adds the background map chosen in the basemap setting
+add_basemap <- function(map) {
+  if (basemap == "carto_key") {
+    carto_tiles(map, style = "light_nolabels") # CARTO light background, no labels
+  } else {
+    leaflet::addProviderTiles(map, basemap, group = "Basemap")
+  }
+}
+
 # ---- Preflight check: stops early with a clear message instead of failing halfway -----------------
 
 basin_ids <- c(Hay = "07OB001", Liard = "10ED002", Yellowknife = "07SB002", Snare = "07SA002",
@@ -87,7 +168,7 @@ required_files <- c(
   setNames(vapply(basin_ids, basin_file, ""), paste(names(basin_ids), "basin"))
 )
 if (!download_BC_data) required_files["BC data"] <- paste0(folder, "BC_Data/BC_Data_", year, ".csv")
-if (ERA5_Land) required_files["ERA5 April max"] <- paste0(folder, "SWEmax_dataset/April_max__combined_max_snow.csv")
+if (ERA5_Land) required_files["ERA5 April max"] <- paste0(folder, "SWEmax_dataset/April_max_combined_max_snow.csv")
 
 missing_files <- required_files[!file.exists(required_files)]
 if (length(missing_files) > 0) {
@@ -99,9 +180,17 @@ if (length(missing_files) > 0) {
 if (ERA5_Land) {
   era5_header <- names(read.csv(required_files[["ERA5 April max"]], nrows = 1))
   if (paste0("Snow_", year) %!in% era5_header) {
-    stop("April_max__combined_max_snow.csv has no Snow_", year, " column.\n",
+    stop("April_max_combined_max_snow.csv has no Snow_", year, " column.\n",
          "Run ERA5_spring_snow_analysis.R for ", year, " first (see README), or set ERA5_Land = F.", call. = FALSE)
   }
+}
+
+if (basemap == "carto_key" && !nzchar(Sys.getenv("CARTO_API_KEY"))) {
+  stop("basemap = \"carto_key\" but there is no CARTO_API_KEY in your .Renviron.\n",
+       "Add your own key (see BEFORE YOU RUN step 5) and restart R, or use a background that doesn't need a key, e.g. basemap = \"Esri.WorldGrayCanvas\".", call. = FALSE)
+}
+if (basemap != "carto_key" && basemap %!in% names(leaflet::providers)) {
+  stop("basemap = \"", basemap, "\" is not a leaflet background map. Check the spelling, or run names(leaflet::providers) to see the options.", call. = FALSE)
 }
 
 if (!file.exists(file.path(phantomjs_path, "phantomjs.exe")) && save) {
@@ -450,7 +539,7 @@ if(is.na(exclude_sites[1])==F){
 
 # Create leaflet map
 map <- leaflet() %>%
-  leaflet::addProviderTiles(providers$CartoDB.PositronNoLabels, group = "CartoDB")
+  add_basemap()
 
 if (mack_basin_outline == TRUE){
   map <- map %>%
@@ -571,6 +660,7 @@ if(save == T){
   htmlwidgets::saveWidget(map, file = paste0(map_file, ".html"), selfcontained = TRUE)
   webshot::webshot(paste0(map_file, ".html"), paste0(map_file, ".png"), delay = 20, vwidth = 1100, vheight = 900, zoom = 1)
   message("Map saved to ", map_file, ".html / .png")
+  message("To finish it in CorelDraw, see the AFTER YOU RUN links at the top of this script.")
 }
 
 # convert df back from sf object
@@ -593,7 +683,7 @@ if(selected_layer != "all" && ERA5_Land == TRUE){
 # make separate map for inset (only needed when mapping one basin)
 if(selected_layer != "all"){
   map_inset <- leaflet() %>%
-    leaflet::addProviderTiles(providers$CartoDB.PositronNoLabels, group = "CartoDB") %>%
+    add_basemap() %>%
     leaflet::addPolygons(data = NWT, color = "black", weight = 1, opacity = 1, fillOpacity = 0, group = "NWT border") %>%
     leaflet::addPolygons(data = selected_sf, color = "grey", weight = 1)
 

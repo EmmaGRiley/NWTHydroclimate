@@ -8,7 +8,7 @@ summary_year <- lubridate::year(Sys.Date())
 #bring in ss data (as GNWT employee)
 source(paste0(user, "/Documents/R_Scripts/Packages/snow/R/R_oracle_connect.R"))
 
-# for non-GNWT users, download data (point_data.csv and sites.csv) from https://doi.org/10.46887/2025-005
+# for non-GNWT users, download data (point_data.csv and sites.csv) from https://doi.org/10.46887/2025-005. Note: this is not a dynamic link.
 # or use data from the /data folder of this package
 #md_3 <- readRDS(paste0(user,"/Documents/R_Scripts/Packages/snow/data/md_3.rds"))
 #sites <- readRDS(paste0(user,"/Documents/R_Scripts/Packages/snow/data/sites.rds"))
@@ -16,6 +16,9 @@ source(paste0(user, "/Documents/R_Scripts/Packages/snow/R/R_oracle_connect.R"))
 #other req functions:
 #opposite of %in%:
 `%!in%` = Negate(`%in%`)
+
+# Define '%>%' operator in current environment
+`%>%` <- magrittr::`%>%`
 
 #Summary Table function
 
@@ -67,9 +70,10 @@ SWEsummary <- function(data,
                           meanSWE_allyears = round(mean(yearlySWE[year<curmaxyear], na.rm=TRUE)*10, 2),
                           pernorm = ((meanSWE_cur/meanSWE01_20)*100),
                           pernorm_allyrs = ((meanSWE_cur/meanSWE_allyears)*100),
-                          rank_current = (rank[year==curmaxyear]),
+                          rank_current = dplyr::first(rank[year==curmaxyear], default = NA), # NA if site not surveyed in curmaxyear
                           Long = mean(long),
-                          Lat = mean(lat))
+                          Lat = mean(lat)) %>%
+       dplyr::filter(!is.na(rank_current)) # drop sites with no survey in curmaxyear (older dplyr did this silently)
      
      if(write == T){
        write.csv(Table, file=paste0(paste0(user, "/Documents/SummaryTable", curmaxyear, ".csv")))}
@@ -93,6 +97,9 @@ SWEsummary(data = md_3,
            act="A",
            write = T)
 }
+
+#use the table output from the above function, and reformat it according to https://diims.gov.nt.ca/gnwt/llisapi.dll/link/259803060.
+#save the re-formatted table as a word doc and pdf doc
 
 #boxplot function - yearly mean SWE separated by region, with current year highlighted in blue
 regional_boxplot = function (surface,

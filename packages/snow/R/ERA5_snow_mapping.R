@@ -7,6 +7,33 @@ library(leaflet)
 #opposite of %in%:
 `%!in%` = Negate(`%in%`)
 
+# CARTO background tiles using your own API key from .Renviron (same function as in ERA5_snowtrends_map_hourly_functions.R)
+carto_tiles <- function(map, style = "light_all", group = "CartoDB") {
+  key <- Sys.getenv("CARTO_API_KEY")          # match your .Renviron name
+  if (!nzchar(key)) stop("CARTO_API_KEY not set in .Renviron")
+
+  leaflet::addTiles(
+    map,
+    urlTemplate = sprintf(
+      "https://{s}.basemaps.cartocdn.com/rastertiles/%s/{z}/{x}/{y}.png?key=%s",
+      style, key),
+    attribution = paste0(
+      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>, ',
+      '&copy; <a href="https://carto.com/attributions">CARTO</a>'),
+    group = group,
+    options = leaflet::tileOptions(subdomains = "abcd", maxZoom = 20)
+  )
+}
+
+# adds the background map chosen in the basemap setting
+add_basemap <- function(map) {
+  if (basemap == "carto_key") {
+    carto_tiles(map, style = "light_nolabels") # CARTO light background, no labels
+  } else {
+    leaflet::addProviderTiles(map, basemap, group = "Basemap")
+  }
+}
+
 #define user
 user <- paste0("C:/Users/", tolower(Sys.getenv("USERNAME"))) # PC version
 
@@ -49,9 +76,12 @@ nwt_elevation_data <- unique(nwt_elevation_data)
 coordinates_high_res <- read.csv(paste0(user, "/Documents/R_Scripts/Packages/snow/data/site_coordinates_highres.csv"))
 
 #mapping and analysis variables
-file <- "May_14max_" #specify "max_spring" for max spring values 
+file <- "April_max" #specify "max_spring" for max spring values or use "April_max" for spring outlook map data (reads April_max_combined_max_snow.csv)
 current_year <- 2026
 selected_layer = "all"
+basemap = "carto_key" # background map. "carto_key" = CARTO light, no labels, using your own CARTO_API_KEY in .Renviron
+#(how to get one: README section 6d, or step 5 at the top of Snow_Mapping_April1_2027.R). Never use someone else's key.
+#No key? use another leaflet provider, e.g. "Esri.WorldGrayCanvas" (full list: names(leaflet::providers))
 clip_ERA5 = T
 add_legend = F
 mack_basin_outline = T
@@ -76,13 +106,22 @@ Sys.setenv(PATH = paste(Sys.getenv("PATH"), paste0(user, "/Documents/Modelling/p
 era5_file <- if (file == "max_spring") {
   paste0(user, "/Documents/R_Scripts/Packages/snow/data/SWEmax_dataset/ERA5_updatedfeb_may.csv")
 } else {
-  paste0(user, "/Documents/R_Scripts/Packages/snow/data/SWEmax_dataset/", file, "_combined_max_snow.csv")
+  paste0(user, "/Documents/R_Scripts/Packages/snow/data/SWEmax_dataset/", sub("_+$", "", file), "_combined_max_snow.csv") # trailing _ in file is dropped
 }
 if (!file.exists(era5_file)) {
   stop("ERA5 file not found: ", era5_file, "\nCheck `file` above, or run ERA5_spring_snow_analysis.R first (see README).", call. = FALSE)
 }
 if (file != "max_spring" && !(paste0("Snow_", current_year) %in% names(read.csv(era5_file, nrows = 1)))) {
   stop(basename(era5_file), " has no Snow_", current_year, " column. Run ERA5_spring_snow_analysis.R for ", current_year, " first.", call. = FALSE)
+}
+
+#check the background map setting
+if (basemap == "carto_key" && !nzchar(Sys.getenv("CARTO_API_KEY"))) {
+  stop("basemap = \"carto_key\" but there is no CARTO_API_KEY in your .Renviron.\n",
+       "Add your own key (see README section 6d) and restart R, or use a background that doesn't need a key, e.g. basemap = \"Esri.WorldGrayCanvas\".", call. = FALSE)
+}
+if (basemap != "carto_key" && basemap %!in% names(leaflet::providers)) {
+  stop("basemap = \"", basemap, "\" is not a leaflet background map. Check the spelling, or run names(leaflet::providers) to see the options.", call. = FALSE)
 }
 
 if (file == "max_spring"){
@@ -95,7 +134,7 @@ if (file == "max_spring"){
                   "sd_year" = "year")
   
 } else {
-  ERA5_snow <- read.csv(paste0(user, "/Documents/R_Scripts/Packages/snow/data/SWEmax_dataset/", file, "_combined_max_snow.csv")) %>%
+  ERA5_snow <- read.csv(era5_file) %>%
     dplyr::select(-c(X)) 
   
   #pivot dataframe
@@ -175,7 +214,7 @@ sd_values_sf <- sd_values_sf %>%
 PerCol_gridded <- leaflet::colorFactor(palette = "RdYlBu", sd_values_sf$Bin)
 
 map <- leaflet::leaflet() %>%
-  leaflet::addProviderTiles(leaflet::providers$CartoDB.PositronNoLabels, group = "CartoDB")
+  add_basemap()
 
 map <- map %>%
   leaflet::addCircleMarkers(data = sd_values_sf,
@@ -349,6 +388,7 @@ if (manual_sites == TRUE){
 
 map
 
+#note: its easier to take a screenshot of the HTML output below to match the size of the photo to the corresponding map template here: https://diims.gov.nt.ca/gnwt/llisapi.dll?func=ll&objaction=overview&objid=245772669
 if(save == T){
   output_dir <- paste0(user, "/Documents/NT_Hydrology/Figures/") # maps are saved here
   dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)

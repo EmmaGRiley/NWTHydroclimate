@@ -171,7 +171,7 @@ for (year in 1995:2026) {
   })
 }
 
-write.csv(combined_max_snow, (paste0(user, "/Documents/R_Scripts/Packages/snow/data/SWEmax_dataset/", file, "_combined_max_snow.csv")))
+write.csv(combined_max_snow, (paste0(user, "/Documents/R_Scripts/Packages/snow/data/SWEmax_dataset/", sub("_+$", "", file), "_combined_max_snow.csv"))) # e.g. April_max_combined_max_snow.csv (trailing _ in file is dropped)
 
 #combining february max snow and march 1 - May 31st march snow
 #replace max snow values in march 1-may 31 data if the february value is higher

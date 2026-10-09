@@ -10,12 +10,51 @@ library(sf)
 library(leaflet)
 library(htmlwidgets)
 
+# CARTO background tiles using your own API key from .Renviron (same function as in ERA5_snowtrends_map_hourly_functions.R)
+carto_tiles <- function(map, style = "light_all", group = "CartoDB") {
+  key <- Sys.getenv("CARTO_API_KEY")          # match your .Renviron name
+  if (!nzchar(key)) stop("CARTO_API_KEY not set in .Renviron")
+
+  leaflet::addTiles(
+    map,
+    urlTemplate = sprintf(
+      "https://{s}.basemaps.cartocdn.com/rastertiles/%s/{z}/{x}/{y}.png?key=%s",
+      style, key),
+    attribution = paste0(
+      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>, ',
+      '&copy; <a href="https://carto.com/attributions">CARTO</a>'),
+    group = group,
+    options = leaflet::tileOptions(subdomains = "abcd", maxZoom = 20)
+  )
+}
+
+# adds the background map chosen in the basemap setting
+add_basemap <- function(map) {
+  if (basemap == "carto_key") {
+    carto_tiles(map, style = "light_nolabels") # CARTO light background, no labels
+  } else {
+    leaflet::addProviderTiles(map, basemap, group = "Basemap")
+  }
+}
+
 user <- paste0("C:/Users/", tolower(Sys.getenv("USERNAME")))
 
 swe_csv <- paste0(user,
   "/Documents/R_Scripts/Packages/snow/data/SWEmax_dataset/spring_max_snow_depth_combined.csv")
 basin_shp <- paste0(user,
   "/Documents/PhD/Yamba/basinmaker_project/basinmaker_out/finalcat_info.shp")
+
+basemap <- "carto_key" # background map. "carto_key" = CARTO light, no labels, using your own CARTO_API_KEY in .Renviron
+# (how to get one: README section 6d). No key? use e.g. "Esri.WorldGrayCanvas" (full list: names(leaflet::providers))
+
+# check the background map setting
+if (basemap == "carto_key" && !nzchar(Sys.getenv("CARTO_API_KEY"))) {
+  stop("basemap = \"carto_key\" but there is no CARTO_API_KEY in your .Renviron.\n",
+       "Add your own key (see README section 6d) and restart R, or use a background that doesn't need a key, e.g. basemap = \"Esri.WorldGrayCanvas\".", call. = FALSE)
+}
+if (basemap != "carto_key" && !(basemap %in% names(leaflet::providers))) {
+  stop("basemap = \"", basemap, "\" is not a leaflet background map. Check the spelling, or run names(leaflet::providers) to see the options.", call. = FALSE)
+}
 
 # Yamba bounding box (WGS84) - matches 03_clip_swe.R
 LAT_MIN <- 64.5; LAT_MAX <- 65.5
@@ -76,7 +115,7 @@ pal <- leaflet::colorBin(palette = "RdYlBu", domain = swe_sf$SWE_mm,
                          bins = swe_bins, reverse = FALSE)
 
 map <- leaflet::leaflet(swe_sf) %>%
-  leaflet::addProviderTiles(leaflet::providers$CartoDB.PositronNoLabels) %>%
+  add_basemap() %>%
   leaflet::addPolygons(data = basin_outline, fill = FALSE,
                        color = "grey", weight = 2, opacity = 1) %>%
   leaflet::addCircleMarkers(
