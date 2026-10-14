@@ -76,7 +76,7 @@ Create `data/<report_year>/` (for example `data/2025/`) and save the AB files th
 | `Hay_GW_LicenceDetail_2025.dbf` | Groundwater licences | Same as above |
 | `Hay_UsageDetail_2025.csv` | Reported monthly water use | If missing, only the allocation trigger (Trigger 1) is produced |
 
-**Where these come from:** **[EMMA: confirm the source and contact. Who at Alberta EPA sends these, and is it a request each year or a download?]**
+**Where these come from:** Alberta EPA passes these along
 
 The usage file must have these columns (names as R reads them): `Water.Allocation.Id`, `Water.Allocation.Type` (`SW`/`GW`), `Measurement.Period.Date` (format like `31-Jan-25`), `Measurement.Value..m3.`. The licence `.dbf` files need `Water_Allo`, `CONSUMPTIV`, `LOSSES`, `SubClassif`. If AB changes their format, compare against `data/2022/`.
 

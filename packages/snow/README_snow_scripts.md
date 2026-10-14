@@ -137,7 +137,7 @@ The ERA5 maps don't download their own baseline. They read files this script mak
    ```
 2. Open `ERA5_spring_snow_analysis.R` and set:
    - `file <- "April_max_"` (for the April 1 map. Use `"May_max_"` for May 1, and so on)
-   - `date_start` / `date_stop` inside `get_spring_snow()`: the window the maximum is taken over. **[EMMA: confirm the April 1 window, e.g. `-02-01 00:00` to `-04-01 00:00`]**
+   - `date_start` / `date_stop` inside `get_spring_snow()`: the window the maximum is taken over. For spring maximum values, the window should be `-02-01 00:00` to `-05-31 00:00`. For April maximum values, the window should cover about 2 days of data near April 1, e.g. `-04-01 00:00` to `-04-02 23:00`.
    - `for(year in 2027)` in the download loop
    - `for (year in 1995:2027)` in the combine loop
 3. Skip the `install.packages()` lines if already installed. Run down to and including the `write.csv(combined_max_snow, …)` line. Stop there, because the rest of the script is separate analysis.
@@ -205,11 +205,11 @@ Combines April 1 snow survey results from four jurisdictions, each as **% of tha
 | ERA5 | Step 3 above | Run `ERA5_spring_snow_analysis.R` |
 
 ### 6a. Yukon: `data/YT_Data/YT_Data_2027.csv`
-YT data come as a spreadsheet with the April 1 bulletin results (2026 example: `YT_Data/YT_data_2026.xlsx`). **[EMMA: confirm who sends it / where to download]**
+YT data come as a spreadsheet with the April 1 bulletin results (2026 example: `YT_Data/YT_data_2026.xlsx`). 
 
-1. **Update the historical record.** Replace `YT_Data/Snow_Samples_YT.csv` with the latest version (it must include last year's surveys). **[EMMA: confirm source]**
+1. **Update the historical record.** Update `YT_Data/Snow_Samples_YT.csv` with the latest data
 2. **Calculate historical means.** Open `R/Calc_yukon_historical_swe_means.R`, set `select_year <- 2027`, and run it. It prints `meanSWE` (mean of every April survey before 2027) for each snow course.
-3. **Make the CSV.** Copy `YT_Data_2026.csv` to `YT_Data_2027.csv`. Open it in Excel and, for each of the 9 sites, update these columns. Leave the others (Jurisdiction, Region, Site, Lat, Long, SNOW_COURSE_ID, ELEVATION, Length_Trimmed = NA) as they are.
+3. **Make the CSV.** Save a new copy of `YT_Data_2026.csv` as `YT_Data_2027.csv`. Open it in Excel and, for each of the 9 sites, update these columns. Leave the others (Jurisdiction, Region, Site, Lat, Long, SNOW_COURSE_ID, ELEVATION, Length_Trimmed = NA) as they are.
 
    | Column | From |
    |---|---|
@@ -226,12 +226,12 @@ YT data come as a spreadsheet with the April 1 bulletin results (2026 example: `
 
    If a site wasn't surveyed, delete its row, or leave `Current_SWE` blank (blank rows are dropped).
 
-   > **Hyland River:** the 2026 mean (199 mm) doesn't match the plain mean from `Snow_Samples_YT.csv` (183.5 mm), because of the A→B site change (`YT_Data/2025_Hyland_River_B_Corrections.xlsx`). **[EMMA: explain how the Hyland mean is calculated]**
+   > **Hyland River:** the 2026 mean (199 mm) doesn't match the plain mean from `Snow_Samples_YT.csv` (183.5 mm), because of the A→B site change (`YT_Data/2025_Hyland_River_B_Corrections.xlsx`). The Hyland mean uses Hyland A × 1.09 (correction factor) for years before 2018, and measured Hyland B values from 2018 on. `Calc_yukon_historical_swe_means.R` calculates this automatically: use its `10AD-SC01B` row.
 
 4. Save as CSV, keeping the name `YT_Data_2027.csv`.
 
 ### 6b. Alberta: `data/AB_Data/AB_Data_2027.csv`
-AB data come as a WISKI report, `rptSnowCourseMonthly…xlsx` (Water Tree: Arctic Ocean; Report Type: 1st of Month; Plains/Mountains; Report Date April 1). The 2026 example is `AB_Data/rptSnowCourseMonthly_for NWT_April_2.xlsx`. **[EMMA: confirm who sends it / how to request it]**
+AB data come as a WISKI report, `rptSnowCourseMonthly…xlsx` (Water Tree: Arctic Ocean; Report Type: 1st of Month; Plains/Mountains; Report Date April 1). The 2026 example is `AB_Data/rptSnowCourseMonthly_for NWT_April_2.xlsx`. 
 
 1. Open the report in Excel and **delete the report-header rows above the table**, so row 1 is the column names.
 2. Check the columns are in this order. The script reads them **by position**:
@@ -242,7 +242,7 @@ AB data come as a WISKI report, `rptSnowCourseMonthly…xlsx` (Water Tree: Arcti
 
 When you run the map, the console lists any **AB sites with no location match**. Those sites have new or changed names and won't be mapped. If one matters, add its coordinates to `AB_Data/Shapefiles/snow_stations.dbf` or to the "fix Alberta coordinates" block in the script.
 
-*(For March/May maps AB sometimes only sends PDFs. `snow_local/R/AB_Data_PDF_convert.R` converts those, but April normally comes as Excel.)*
+*(For March/May maps AB sometimes only sends PDFs. `NWTHydroclimate/packages/snow/R/AB_Data_PDF_convert.R` converts those, but April normally comes as Excel.)*
 
 ### 6c. BC: automatic
 With `download_BC_data = T`, the script downloads `allmss_archive.csv` and `allmss_current.csv` from https://www.env.gov.bc.ca/wsd/data_searches/snow/asws/data/, combines them and saves `BC_Data/BC_Data_2027.csv`. % of average = this year's April 1 SWE ÷ mean of all earlier April 1 surveys at that course.
@@ -264,15 +264,11 @@ If you get a warning that BC has no April 1 data, BC hasn't published yet (usual
 5. Outputs in `Documents/NT_Hydrology/Figures/`:
    - `map_<MRB or basin>_April1_2027.html/.png`
    - for single basins, an inset `map_inset_<basin>_2027.html/.png`
-6. Finish the map in **CorelDraw** (legend, labels, layout). Step-by-step instructions are on DIIMS:
+6. Finish the map in **CorelDraw** (legend, labels, layout). Templates are found on DIIMS:
    - End of season maps: https://diims.gov.nt.ca/gnwt/llisapi.dll/link/245398288
    - Mid-season maps: https://diims.gov.nt.ca/gnwt/llisapi.dll?func=ll&objaction=overview&objid=245772669
 
 **To make a 2028 version:** copy this file to `Snow_Mapping_April1_2028.R` and change `year = 2028`. Everything else follows from `year`.
-
-**Things that may need a look** (unchanged from 2026, so 2027 maps are comparable):
-- **Great Slave Lake basin clip:** only the Taltson basin is removed from GSL. Each `st_difference` line starts again from `GSL`, so the Slave and Hay lines have no effect.
-- **Fairview (AB):** the coordinate fix sets its *longitude* to 56.03, which is a latitude. Fairview probably isn't being mapped.
 
 ---
 
@@ -286,7 +282,7 @@ If you get a warning that BC has no April 1 data, BC hasn't published yet (usual
 | `nanodbc… Data source name not found` | ODBC source `ECC_WMSD_SNOW` not set up, or set up under a different name | Setup → Database connection |
 | `ORA-01017: invalid username/password` | Wrong or missing `ORACLE_SNOW_USER` / `ORACLE_SNOW_PWD`, or R not restarted after editing `.Renviron` | Check `.Renviron`, restart R |
 | `ORA-28000: account is locked` | Too many wrong passwords | ISSS ticket to unlock SNOW_VIEWER |
-| Warning: no NT snow survey data for 2027 | Surveys not yet loaded to the snow database | Wait for the load. **[EMMA: who loads surveys?]** |
+| Warning: no NT snow survey data for 2027 | Surveys not yet loaded to the snow database | Wait for the load, or load them yourself (see `data_load_instructions.docx` in the snow database instructions folder on DIIMS, linked under *Database connection*) |
 | BC sites missing | BC hasn't published April 1 data yet | Wait and re-run |
 | AB sites listed as "no location match" | AB renamed or added a station | See 6b |
 | `.html` saved but no `.png` | phantomjs not installed or in the wrong folder | `webshot::install_phantomjs()` |
