@@ -59,7 +59,7 @@ Optional (research scripts only): `SWEmax_dataset/ERA5_updated1960_2025NWT.csv` 
 > If your Documents folder is redirected (e.g. to OneDrive), none of these paths will work. In R, run `path.expand("~")`. It should print `C:/Users/<you>/Documents`. If it doesn't, talk to IT before going further.
 
 ### Database connection (NWT snow survey data)
-1. Set up the ODBC data source **ECC_WMSD_SNOW** (TNS service `PDB3PRD1`, user `SNOW_VIEWER`). See *Instructions – connecting to database.docx* and *R coding session – instructions.docx* in `NT_Hydrology/Abiotic Monitoring/ClimateDB/`.
+1. Set up the ODBC data source **ECC_WMSD_SNOW** (TNS service `PDB3PRD1`, user `SNOW_VIEWER`). See *Instructions – connecting to database.docx* and *R coding session – instructions.docx* in the climate database instructions folder on DIIMS: https://diims.gov.nt.ca/gnwt/llisapi.dll/link/230238639
 2. Put the username and password in your **`.Renviron`** file. **Don't** type them into the scripts. In R:
    ```r
    usethis::edit_r_environ()
