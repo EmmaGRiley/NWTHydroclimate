@@ -44,7 +44,7 @@ C:/Users/<you>/Documents/
    - On GitHub, open the repo, click the branch dropdown (it says **main**), choose **gnwt-operational**, then **Code → Download ZIP**.
    - Unzip so the folder is named exactly `hydroclim` / `nwtclimate`, not `hydroclim-gnwt-operational`.
    - Repos: https://github.com/M-Auclair/hydroclim and https://github.com/M-Auclair/nwtclimate
-2. **nwtclimate data files.** The ECCC `.rds` data files are too big for GitHub. Copy the `data/` folder from the H: drive or USB (see *R coding session – instructions.docx*) into `nwtclimate/data/`.
+2. **nwtclimate data files.** The ECCC `.rds` data files are in the `data/` folder of the nwtclimate gnwt-operational branch, so they come with the ZIP download. Check they are in `nwtclimate/data/`.
 3. **Workflow scripts.** Download `SOEfigs_functions.R` and `update_climate.R` from https://github.com/EmmaGRiley/NWTHydroclimate and save them in `R_Scripts/Functions/Workflows/`.
 4. **This folder.** Download the `Transboundary` folder from the same repo into `R_Scripts/Packages/Transboundary/`, including `data/`.
 5. **Packages.** In RStudio:
